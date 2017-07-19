@@ -2,16 +2,16 @@
 # coding: utf-8
 import numpy as np
 import pandas as pd
-import stringcleaningtools as sct
+from neatmartinet import neatcleanstring as ncs
 from importlib import reload
 #%%
 def compare_values(source,target,colname,threshold=0.0):
     if colname == 'latlng':
         return geodistance(source,target)
     elif colname in ['streetaddress_wostopwords','companyname_wostopwords','cityname']:
-        return sct.fuzzyscore(source,target,tokenthreshold=0.7,countthreshold=0.5,mintokenlength=5)
+        return ncs.fuzzyscore(source,target,tokenthreshold=0.7,countthreshold=0.5,mintokenlength=5)
     else:
-        return sct.compare_twostrings(source,target,minlength=0,threshold=0.8)
+        return ncs.compare_twostrings(source,target,minlength=0,threshold=0.8)
 
 #%%
 def exactmatch(a,b):
@@ -55,11 +55,11 @@ def compare_acronyme(a,b,minaccrolength=3):
     if pd.isnull(a) or pd.isnull(b):
         return None
     else:
-        a_acronyme = sct.acronym(a)
-        b_acronyme = sct.acronym(b)
+        a_acronyme = ncs.acronym(a)
+        b_acronyme = ncs.acronym(b)
         if min(len(a_acronyme),len(b_acronyme))>= minaccrolength:
-            a_score_acronyme=sct.compare_tokenized_strings(a_acronyme,b,mintokenlength=minaccrolength)
-            b_score_acronyme=sct.compare_tokenized_strings(b_acronyme,a,mintokenlength=minaccrolength)
+            a_score_acronyme=ncs.compare_tokenized_strings(a_acronyme,b,mintokenlength=minaccrolength)
+            b_score_acronyme=ncs.compare_tokenized_strings(b_acronyme,a,mintokenlength=minaccrolength)
             if any(pd.isnull([a_score_acronyme,b_score_acronyme])):
                 return None
             else:
@@ -70,10 +70,5 @@ def compare_acronyme(a,b,minaccrolength=3):
 
 #%%
 identitycols=['companyname_wostopwords','dunsnumber']
-locationcols=['cityname','postalcode','streetaddress_wostopwords','latlng']
-
-companieschosen=['gardner','honeywell','safran','liebherr','zodiac','eaton','rockwell','collins',
-                 'stelia','pfw','flamm','ohb','indra','microsemi','europrop','epi','thales','inmarsat',
-                 'eai','kadet','rohrer','aercal','tai']
-
+locationcols=['cityname','postalcode','streetaddress_wostopwords']
         
