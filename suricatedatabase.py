@@ -6,13 +6,14 @@
 # Build a training set to fit the deduplication model
 # Fit the deduplicationModel
 """
-import pandas as pd
 import numpy as np
-import stringcleaningtools as sct
-import groupcompaniesfunc as group
+import pandas as pd
+from neatmartinet import neatcleanstring as ncs
+
+from duplicatesuricate import suricatefunctions as surfunc
 
 
-class DeduplicationDatabase:
+class Suricate:
     """
     A wrap around Pandas.DataFrame class, with special methods to eliminate doublons
     How to wrap around the pandas.DataFrame ???
@@ -71,27 +72,27 @@ class DeduplicationDatabase:
 
         # normalize the strings
         for c in ['companyname', 'streetaddress', 'cityname']:
-            self.df[c] = self.df[c].apply(sct.normalizechars)
+            self.df[c] = self.df[c].apply(ncs.normalizechars)
 
         # remove bad possible matches
         self.df.loc[self.df['possiblematches'] == 0, 'possiblematches'] = np.nan
 
         # convert all duns number as strings with 9 chars
-        self.df['dunsnumber'] = self.df['dunsnumber'].apply(lambda r: sct.convert_int_to_str(r, 9))
+        self.df['dunsnumber'] = self.df['dunsnumber'].apply(lambda r: ncs.convert_int_to_str(r, 9))
 
         # remove stopwords from company names
         self.df['companyname_wostopwords'] = self.df['companyname'].apply(
-            lambda r: sct.rmv_stopwords(r, stopwords=companystopwords))
+            lambda r: ncs.rmv_stopwords(r, stopwords=companystopwords))
 
         # create acronyms of company names
-        self.df['companyname_acronym'] = self.df['companyname'].apply(sct.acronym)
+        self.df['companyname_acronym'] = self.df['companyname'].apply(ncs.acronym)
 
         # remove stopwords from street addresses
         self.df['streetaddress_wostopwords'] = self.df['streetaddress'].apply(
-            lambda r: sct.rmv_stopwords(r, stopwords=streetstopwords, endingwords=endingwords))
+            lambda r: ncs.rmv_stopwords(r, stopwords=streetstopwords, endingwords=endingwords))
 
         # Calculate word use frequency in company names
-        self.df['companyname_wostopwords_wordfrequency'] = sct.calculate_token_frequency(
+        self.df['companyname_wostopwords_wordfrequency'] = ncs.calculate_token_frequency(
             self.df['companyname_wostopwords'])
 
         # Take the first digits and the first two digits of the postal code
@@ -119,7 +120,7 @@ class DeduplicationDatabase:
                                                                                    mycol].isnull() == False, mycol] / max_value
 
         # Calculate frequency of city used
-        self.df['cityfrequency'] = sct.calculate_cat_frequency(self.df['cityname'])
+        self.df['cityfrequency'] = ncs.calculate_cat_frequency(self.df['cityname'])
 
         # Define the list of big cities
         bigcities = ['munich',
@@ -275,7 +276,7 @@ class DeduplicationDatabase:
             if c in query.index:
                 if pd.isnull(query[c]) is False:
                     b = query[c]
-                    df2[c+'_score']=df2[c].apply(lambda a: sct.compare_twostrings(a, b))
+                    df2[c+'_score']=df2[c].apply(lambda a: ncs.compare_twostrings(a, b))
                 else:
                     df2[c+'_score']=0
         scorecols=[c+'_score' for c in filtercols]
@@ -343,21 +344,21 @@ class DeduplicationDatabase:
         for c in ['companyname', 'companyname_wostopwords', 'companyname_acronym',
                   'streetaddress', 'streetaddress_wostopwords', 'cityname', 'postalcode']:
             b = query.loc[c]
-            tablescore[c + '_fuzzyscore'] = self.df[c].apply(lambda a: sct.compare_twostrings(a, b))
+            tablescore[c + '_fuzzyscore'] = self.df[c].apply(lambda a: ncs.compare_twostrings(a, b))
         for c in ['companyname_wostopwords', 'streetaddress_wostopwords']:
             b = query.loc[c]
             tablescore[c + '_tokenscore'] = self.df[c].apply(
-                lambda a: sct.compare_tokenized_strings(a, b, tokenthreshold=0.5, countthreshold=0.5))
+                lambda a: ncs.compare_tokenized_strings(a, b, tokenthreshold=0.5, countthreshold=0.5))
 
         b = query.loc['companyname']
-        tablescore['companyname_acronym_tokenscore'] = self.df['companyname'].apply(lambda a: group.compare_acronyme(a, b))
+        tablescore['companyname_acronym_tokenscore'] = self.df['companyname'].apply(lambda a: surfunc.compare_acronyme(a, b))
 
         b = query.loc['latlng']
-        tablescore['latlng_geoscore'] = self.df['latlng'].apply(lambda a: group.geodistance(a, b))
+        tablescore['latlng_geoscore'] = self.df['latlng'].apply(lambda a: surfunc.geodistance(a, b))
 
         for c in ['country', 'state', 'dunsnumber','postalcode_1stdigit','postalcode_2digits']:
             b = query.loc[c]
-            tablescore[c + '_exactscore'] = self.df[c].apply(lambda a: group.exactmatch(a, b))
+            tablescore[c + '_exactscore'] = self.df[c].apply(lambda a: surfunc.exactmatch(a, b))
 
         return tablescore
 
@@ -490,18 +491,18 @@ companystopwords_list=['aerospace',
 streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse']
 endingwords_list = ['strasse', 'str', 'strae']
 _training_table_filename_='training_table_prepared_201707_69584rows.csv'
-training_table = pd.read_csv(_training_table_filename_,index_col=0,encoding='utf-8',sep='|')
+#training_table = pd.read_csv(_training_table_filename_,index_col=0,encoding='utf-8',sep='|')
 
 if __name__ == '__main__':
     pass
-    filename='gid1000_verified2000_samples.csv'
-    df = pd.read_csv(filename, index_col=0, sep='|', encoding='utf-8')
-    db = DeduplicationDatabase(df, warmstart=False)
-    verified_samples = np.arange(1, 10)
+    # filename='gid1000_verified2000_samples.csv'
+    # df = pd.read_csv(filename, index_col=0, sep='|', encoding='utf-8')
+    # db = Suricate(df, warmstart=False)
+    # verified_samples = np.arange(1, 10)
     #training_table = db.build_traing_table_for_supervised_learning(verified_groups_list=verified_samples)
     #or training table is already loaded
-    from sklearn.ensemble import RandomForestClassifier
-    mymodel = RandomForestClassifier(n_estimators=2000)
-    db.fitmodel(mymodel, training_table)
-    db.launch_calculation(nmax=10)
+    # from sklearn.ensemble import RandomForestClassifier
+    # mymodel = RandomForestClassifier(n_estimators=2000)
+    # db.fitmodel(mymodel, training_table)
+    # db.launch_calculation(nmax=10)
 
