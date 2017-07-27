@@ -15,8 +15,7 @@ from duplicatesuricate import suricatefunctions as surfunc
 
 class Suricate:
     """
-    A wrap around Pandas.DataFrame class, with special methods to eliminate doublons
-    How to wrap around the pandas.DataFrame ???
+    A class that uses a pandas.DataFrame to store the data (self.df) and special methods to eliminate doublons
     """
 
     def __init__(self, df, warmstart=True, idcol='possiblematches',
