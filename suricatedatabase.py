@@ -69,6 +69,10 @@ class Suricate:
         streetstopwords = streetstopwords_list
         endingwords=endingwords_list
 
+        #check if latlng is in the existing database, other create a null one
+        if 'latlng' not in self.df.columns:
+            self.df['latlng'] = np.nan
+
         # normalize the strings
         for c in ['companyname', 'streetaddress', 'cityname']:
             self.df[c] = self.df[c].apply(ncs.normalizechars)
