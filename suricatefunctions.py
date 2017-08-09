@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 from neatmartinet import neatcleanstring as ncs
-from importlib import reload
+#library needed: geopy for the latlng distance calculations
 #%%
 def compare_values(source,target,colname,threshold=0.0):
     if colname == 'latlng':
@@ -28,19 +28,28 @@ def exactmatch(a,b):
         return int((a == b))
 
 #%%
-def geodistance(source,target,colname='latlng',threshold=100):
-    from geopy.distance import vincenty
+def geodistance(source,target,threshold=100):
+    '''
+    calculate the distance between the source and the target
+    return a normalized the score up to a certain threshold
+    the greater the distance the lower the score, until threshold =0
+    :param source: latlng coordinate, in lat,lng string format
+    :param target: latlng coordinate, in lat,lng string format
+    :param threshold: int, maximum distance in km
+    :return: score between 0 (distance greater than threshold) and 1 (distance =0)
+    '''
     if pd.isnull(source) or pd.isnull(target):
         return None
-
     else:
+        from geopy.distance import vincenty
         sourcelat=float(source.split(',')[0])
         sourcelng=float(source.split(',')[1])
         targetlat=float(target.split(',')[0])
         targetlng=float(target.split(',')[1])
         dist=vincenty((sourcelat,sourcelng),(targetlat,targetlng)).km
         if dist <threshold:
-            return (100-dist)/100
+            #return a score between 1 (distance = 0) and 0 (distance = threshold)
+            return (threshold-dist)/threshold
         else:
             return 0
 
