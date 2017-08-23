@@ -2,7 +2,7 @@
 # coding: utf-8
 import numpy as np
 import pandas as pd
-from neatmartinet import neatcleanstring as ncs
+import neatcleanstring as ncs
 #library needed: geopy for the latlng distance calculations
 #%%
 def compare_values(source,target,colname,threshold=0.0):
