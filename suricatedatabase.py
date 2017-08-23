@@ -618,37 +618,38 @@ companystopwords_list=['aerospace',
 streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse','strae']
 endingwords_list = ['strasse', 'str', 'strae']
 _training_table_filename_='training_table_prepared_201707_69584rows.csv'
-#training_table = pd.read_csv(_training_table_filename_,index_col=0,encoding='utf-8',sep='|')
+_logfile_filename_='log_table.csv'
+
+def standard_model(df,
+                warmstart=True,
+                training_filename=_training_table_filename_,
+                logfilename=_logfile_filename_,
+                idcol='groupid',
+                queryidcol='queryid'):
+    '''
+    create, clean and fit the model to the given database
+    :param df: database to be deduplicated
+    :param warmstart: if database needs to be clean
+    :param training_filename: name of the training table file
+    :param logfilename: name of the training file
+    :param idcol: name of the column where new ids are issued
+    :param queryidcol: name of the column where the original query is stored
+    :return: Suricate model ready to launch calculations
+    '''
+    training_table = pd.read_csv(training_filename,index_col=0,encoding='utf-8',sep='|')
+    logtable=pd.read_csv(logfilename,index_col=0,encoding='utf-8',sep='|')
+    idcol=idcol
+    queryidcol=queryidcol
+    sur=Suricate(df=df,
+                 warmstart=warmstart,
+                 idcol=idcol,
+                 queryidcol=queryidcol,
+                 log=logtable)
+    sur.fitmodel(training_set=training_table)
+    return sur
 
 #%%
 if __name__ == '__main__':
     pass
-    filename_data='LFA1.csv'
-    filename_training_table='training_table_prepared_201707_69584rows.csv'
-    filename_out='LFA1_deduplicated.csv'
     
-#    df=pd.read_csv(filename_out,index_col=0,sep='|',encoding='utf-8',error_bad_lines=False,nrows=10**4)
-#        df.rename(columns={
-#        'suppliername1':'companyname',
-#        'street':'streetaddress',
-#        'city':'cityname',
-#    },
-#             inplace=True)
-    #df=df[[ 'dunsnumber', 'suppliername1',      'street', 'postalcode', 'city', 'country']]
-
-#    idcol='groupid'
-#    queryidcol='queryid'
-#    df[idcol]=None
-#    df[queryidcol]=None
-#    training_table = pd.read_csv(filename_training_table,encoding='utf-8',sep='|',index_col=0,nrows=10**4)
-#    trainingcols=training_table.columns.tolist()
-#%%
-if __name__ == '__main__':
-    pass
-#    sur = Suricate(df,warmstart=False,queryidcol=queryidcol,idcol=idcol)
-#    sur.df.to_csv(filename_out,encoding='utf-8',sep='|')
-#    sur.fitmodel(training_set=training_table)
-#    sur.launch_calculation(nmax=40)
-#    sur.df.sort_values(by=sur.idcol,inplace=True,ascending=True)
-#    sur.df.to_csv(filename_out,encoding='utf-8',sep='|')
 
