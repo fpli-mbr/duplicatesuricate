@@ -40,7 +40,8 @@ class Suricate:
         self.verbose = verbose
         self.model = None
 
-        self.displaycols = [self.idcol,'companyname', 'dunsnumber', 'cityname', 'country', 'streetaddress']
+        self.displaycols = [self.idcol,'companyname', 'streetaddress','cityname','postalcode' ,'country',
+                            'dunsnumber','taxid','registerid']
         if self.verbose:
             print('Inputdatabase shape', df.shape)
             start = pd.datetime.now()
@@ -111,10 +112,17 @@ class Suricate:
                     return s
 
         self.df['dunsnumber']=self.df['dunsnumber'].apply(cleanduns)
-        
+
         # convert all postal codes to strings
         self.df['postalcode'] = self.df['postalcode'].apply(lambda r: surfunc.convert_int_to_str(r))
-        
+
+        #convert all taxid and registerid to string
+        for c in ['taxid','registerid']:
+            if c in self.df.columns:
+                self.df[c]=self.df[c].astype(str).replace(surfunc.nadict)
+            else:
+                self.df[c]=None
+
         # remove stopwords from company names
         self.df['companyname_wostopwords'] = self.df['companyname'].apply(
             lambda r: surfunc.rmv_stopwords(r, stopwords=companystopwords))
@@ -238,12 +246,16 @@ class Suricate:
 
         if in_index is None:
             in_index = self.df.index
-        # to check why idcol has gid in it
-        possiblechoices = self.df.loc[(self.df[self.idcol].astype(float) > 0) == False].loc[in_index]
+
+        x=self.df.loc[in_index]
+        possiblechoices = x.loc[(x['groupid']==0) | (x['groupid'].isnull())].index
         if possiblechoices.shape[0] == 0:
+            del x
             return None
         else:
-            return possiblechoices.sample().index[0]
+            a = np.random.choice(possiblechoices)
+            del x,possiblechoices
+            return a
 
     def _update_idcol_(self, goodmatches_index, query_index):
         """
@@ -335,7 +347,7 @@ class Suricate:
                     temp_index = self.df.loc[(self.df[c].apply(lambda a: surfunc.exactmatch(a, b)) == 1)].index.tolist()
                     exact_index = list(set(temp_index + exact_index))
 
-        all_index = list(set(all_index + exact_index))
+        all_index = list(set(all_index + exact_index + [query_index]))
         
         #update log table information
                 #update the log file
@@ -399,6 +411,7 @@ class Suricate:
         Returns:
             pd.DataFrame
         """
+        ##PS: It would be nice to transform that into a function that applies directly to a row
 
         # get the list of possible matches
         database_index = self._filter_database_(query_index=query_index)
@@ -434,7 +447,7 @@ class Suricate:
         tablescore['latlng_geoscore'] = self.df['latlng'].apply(lambda a: surfunc.geodistance(a, b))
         del b
         
-        for c in ['country','state', 'dunsnumber','postalcode_1stdigit','postalcode_2digits']:
+        for c in ['country','state', 'dunsnumber','postalcode_1stdigit','postalcode_2digits','taxid','registerid']:
             b = query.loc[c]
             tablescore[c + '_exactscore'] = self.df[c].apply(lambda a: surfunc.exactmatch(a, b))
             del b
@@ -474,6 +487,7 @@ class Suricate:
         # Launche the model on it
         y_proba=pd.DataFrame(index=tablescore.index,data=self.model.predict_proba(tablescore))[1]
         y_pred = (y_proba>=self._decisionthreshold_)
+        y_pred.loc[query_index]=True
         # Filter on positive matches
         goodmatches_index = y_pred.loc[y_pred].index
         #update the log file
@@ -534,7 +548,7 @@ class Suricate:
         x.sort_values(by='score',inplace=True)
         return x
         
-    def build_traing_table_for_supervised_learning(self, verified_groups_list):
+    def build_training_table_from_grouplist(self, verified_groups_list):
         """
         build a scoring table to fit the model using the labels already classified
         Args:
@@ -565,6 +579,42 @@ class Suricate:
             print('percent true','{:.0%}'.format(percent_true))
             print('mean # of lines filtered for each verified line',int(alldata.shape[0]/len(possibleindex)))
         return alldata
+
+    def building_training_table_from_queryids(self,verified_queries):
+        """
+        build a scoring table to fit the model using the labels already classified
+        Args:
+            verified_queries: list, list of queries (index) that were verified
+        Returns:
+            pandas.DataFrame: labelled score table for all verified matches
+        """
+        alldata = pd.DataFrame()
+        start = pd.datetime.now()
+        for qix in verified_queries:
+            if pd.isnull(self.df.loc[qix,'groupid']):
+                pass
+            else:
+                scoredtable = self._generate_labelled_scored_table_(qix)
+                if alldata.shape[0] == 0:
+                    alldata = scoredtable
+                else:
+                    alldata = pd.concat([alldata, scoredtable], axis=0)
+        alldata['ismatch'] = alldata['ismatch'].astype(int)
+        if self.verbose:
+            end = pd.datetime.now()
+            duration = (end - start).total_seconds()
+            print('building time', duration, 'seconds')
+            print('shape of training table', alldata.shape[0])
+            percent_true=alldata['ismatch'].sum()/alldata.shape[0]
+            print('percent true','{:.0%}'.format(percent_true))
+
+        return alldata
+
+    def export_results_to_excel(self,filename,*args,**kwargs):
+        self.df.sort_values(by=[
+            self.idcol,'companyname','dunsnumber','taxid','registerid','streetaddress'],inplace=True,ascending=True)
+
+        self.df[self.displaycols].to_excel(filename,*args,**kwargs)
 
 
 companystopwords_list=['aerospace',
@@ -616,11 +666,11 @@ companystopwords_list=['aerospace',
  'und']
 streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse','strae']
 endingwords_list = ['strasse', 'str', 'strae']
-_training_table_filename_='training_table_prepared_201707_69584rows.csv'
+_training_table_filename_='training_table_prepared_201708_69584rows.csv'
 _logfile_filename_='log_table.csv'
 
 def standard_model(df,
-                warmstart=True,
+                warmstart=False,
                 training_filename=_training_table_filename_,
                 logfilename=_logfile_filename_,
                 idcol='groupid',
@@ -635,15 +685,14 @@ def standard_model(df,
     :param queryidcol: name of the column where the original query is stored
     :return: Suricate model ready to launch calculations
     '''
-    training_table = pd.read_csv(training_filename,index_col=0,encoding='utf-8',sep='|')
-    logtable=pd.read_csv(logfilename,index_col=0,encoding='utf-8',sep='|')
+    training_table = pd.read_csv(training_filename,encoding='utf-8',sep='|')
+    #logtable=pd.read_csv(logfilename,index_col=0,encoding='utf-8',sep='|')
     idcol=idcol
     queryidcol=queryidcol
     sur=Suricate(df=df,
                  warmstart=warmstart,
                  idcol=idcol,
-                 queryidcol=queryidcol,
-                 log=logtable)
+                 queryidcol=queryidcol)
     sur.fitmodel(training_set=training_table)
     return sur
 
