@@ -70,22 +70,23 @@ class Suricate:
 
         # if we compare two exact same indexes
         if row_index == query_index:
-            return 1
+            return True
         else:
             # else if some ID match
             for c in ['dunsnumber', 'taxid', 'registerid']:
                 if self.df.loc[query_index, c] == self.df.loc[row_index, c]:
-                    return 1
+                    return True
             # if they are not the same country we reject
             if self.df.loc[query_index, 'country'] != self.df.loc[row_index, 'country']:
-                return 0
+                return False
             else:
                 for c in ['streetaddress', 'companyname']:
                     filterscore = surfunc.compare_twostrings(
                         self.df.loc[query_index, c], self.df.loc[row_index, c])
-                    if filterscore >= self._filterthreshold_:
-                        return 1
-        return 0
+                    if filterscore is not None:
+                        if filterscore >= self._filterthreshold_:
+                            return True
+        return False
 
     def _parallel_calculate_comparison_score_(self, query_index, row_index):
         '''
@@ -150,8 +151,7 @@ class Suricate:
             if len(missingcolumns)>0:
                 print('columns not found in scoring vector',missingcolumns)
 
-
-        proba = self.model.predict_proba(comparison_score)[1]
+        proba = self.model.predict_proba(comparison_score.values.reshape(1,-1))[0][1]
         if proba >= self._decisionthreshold_:
             return True
         else:
@@ -168,11 +168,11 @@ class Suricate:
         boolean True if it is a match False otherwise
         '''
 
-        if self._parallel_filter_(self, query_index, row_index) is False:
+        if self._parallel_filter_(query_index, row_index) is False:
             return False
         else:
             comparisonscore = self._parallel_calculate_comparison_score_(query_index, row_index)
-            ismatch = self._parallel_predict_(self,comparison_score=comparisonscore)
+            ismatch = self._parallel_predict_(comparison_score=comparisonscore)
             return ismatch
 
     def clean_db(self):
@@ -184,6 +184,9 @@ class Suricate:
         companystopwords = companystopwords_list
         streetstopwords = streetstopwords_list
         endingwords = endingwords_list
+
+        self.df['Index']=self.df.index
+
         # check if columns is in the existing database, other create a null one
         for c in [self.idcol, self.queryidcol, 'latlng', 'state']:
             if c not in self.df.columns:
@@ -364,7 +367,7 @@ class Suricate:
             query_index: index to be used to save the original id of the matching record
     
         Returns:
-    
+        integer, number of ids deduplicated
         """
         # Take the maximum existing group id
         database_matching_id_max = self.df[self.idcol].max()
@@ -380,19 +383,16 @@ class Suricate:
                 # otherwise create a new one
                 goodmatches_matching_id = database_matching_id_max + 1
 
-            # print('new match',goodmatches_matching_id)
             # take all lines who don't have a group id and give them the new id and save the index of the query
             nonallocatedmatches_index = self.df.loc[goodmatches_index].loc[
                 self.df.loc[goodmatches_index, self.idcol].isnull()].index
-            # print('len of non allocated matches',len(nonallocatedmatches_index))
+
             self.df.loc[nonallocatedmatches_index, self.idcol] = goodmatches_matching_id
             self.df.loc[nonallocatedmatches_index, self.queryidcol] = query_index
-
+            n_deduplicated = len(nonallocatedmatches_index)
         else:
-            pass
-        return None
-
-
+            n_deduplicated = None
+        return n_deduplicated
 
     def launch_calculation(self, nmax=None, in_index=None):
         """
@@ -418,8 +418,12 @@ class Suricate:
                 print('no valid query available')
                 break
             else:
+                start = pd.datetime.now()
                 goodmatches_index = self._return_goodmatches_(query_index=query_index)
-                self._update_idcol_(goodmatches_index, query_index)
+                n_deduplicated = self._update_idcol_(goodmatches_index, query_index)
+                end = pd.datetime.now()
+                duration = (end - start).total_seconds()
+                print('record',countdown,'of',nmax,'n_deduplicated',n_deduplicated,'duration',duration)
         print('deduplication finished at ', pd.datetime.now())
 
         return None
@@ -500,10 +504,9 @@ class Suricate:
             pandas.Series().index: positive matches
     
         """
-        # Create the scoring table
-        start = pd.datetime.now()
-        ismatch_boolean = pd.Series(index=self.df.index,data=self.df.index).apply(lambda ix:self._parallel_computation(query_index,ix))
-        goodmatches_index=ismatch_boolean.loc[ismatch_boolean]
+        ismatch_boolean = self.df['Index'].apply(lambda ix:self._parallel_computation(query_index,ix))
+        goodmatches_index=ismatch_boolean.loc[ismatch_boolean].index
+
         return goodmatches_index
 
     def _generate_labelled_scored_table_(self, query_index):
@@ -683,7 +686,6 @@ companystopwords_list = ['aerospace',
 streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse', 'strae']
 endingwords_list = ['strasse', 'str', 'strae']
 _training_table_filename_ = 'training_table_prepared_201708_69584rows.csv'
-_logfile_filename_ = 'log_table.csv'
 
 
 def standard_model(df,
@@ -710,7 +712,6 @@ def standard_model(df,
                    queryidcol=queryidcol)
     sur.fitmodel(training_set=training_table)
     return sur
-
 
 # %%
 if __name__ == '__main__':
