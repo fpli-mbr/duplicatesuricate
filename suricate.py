@@ -17,7 +17,7 @@ class Suricate:
     """
 
     def __init__(self, df, warmstart=True, idcol='possiblematches',
-                 queryidcol='queryid', verbose=True,log=None):
+                 queryidcol='queryid', verbose=True):
         """
 
         Args:
@@ -26,9 +26,7 @@ class Suricate:
             idcol (str): name of the column where to store the deduplication results
             queryidcol (str): name of the column used to store the original match
             verbose (bool): Turns on or off prints
-            log (pd.DataFrame): Log table used for deduplication
         """
-        self.filename_log='log_table.csv'
         start = pd.datetime.now()
         self.df = df
         self.featurecols = ['companyname_wostopwords_wordfrequency',
@@ -40,8 +38,8 @@ class Suricate:
         self.verbose = verbose
         self.model = None
 
-        self.displaycols = [self.idcol,'companyname', 'streetaddress','cityname','postalcode' ,'country',
-                            'dunsnumber','taxid','registerid']
+        self.displaycols = [self.idcol, 'companyname', 'streetaddress', 'cityname', 'postalcode', 'country',
+                            'dunsnumber', 'taxid', 'registerid']
         if self.verbose:
             print('Inputdatabase shape', df.shape)
             start = pd.datetime.now()
@@ -54,28 +52,128 @@ class Suricate:
             duration = (end - start).total_seconds()
             print('cleaning time', duration, 'seconds')
             print('output database shape', df.shape)
-        #scoring threshold for fuzzyscore filtering
+        # scoring threshold for fuzzyscore filtering
         self._filterthreshold_ = 0.8
-        #scoring threshold using model predict_proba
-        self._decisionthreshold_=0.6
-        
-        #create/load log table
-        if log is None:
-            self.logdf=pd.DataFrame(columns=['run_number','countdown',
-            'timestamp_start','timestamp_end',
-            'time_filtering_s','time_scoring_s','time_predicting_s','time_other_s',
-            'query_index',
-            'database_nrows','filtered_nrows','goodmatches_nrows',
-            'deduplicated_nrows','matchid',
-            'totalallocated_nrows','duration_s'])
-            self.logrow=0
+        # scoring threshold using model predict_proba
+        self._decisionthreshold_ = 0.6
+
+    def _parallel_filter_(self, query_index, row_index):
+        '''
+        check if the row could be a potential match or Not.
+        Args:
+            query_index: index of the query
+            row_index: index of the row
+
+        Returns:
+        boolean True if potential match, False otherwise
+        '''
+
+        # if we compare two exact same indexes
+        if row_index == query_index:
+            return 1
         else:
-            self.logdf=log
-            for c in ['timestamp_start','timestamp_end']:
-                self.logdf[c]=pd.to_datetime(self.logdf[c])
-            self.logrow=self.logdf.shape[0]+1
-                                    
-            
+            # else if some ID match
+            for c in ['dunsnumber', 'taxid', 'registerid']:
+                if self.df.loc[query_index, c] == self.df.loc[row_index, c]:
+                    return 1
+            # if they are not the same country we reject
+            if self.df.loc[query_index, 'country'] != self.df.loc[row_index, 'country']:
+                return 0
+            else:
+                for c in ['streetaddress', 'companyname']:
+                    filterscore = surfunc.compare_twostrings(
+                        self.df.loc[query_index, c], self.df.loc[row_index, c])
+                    if filterscore >= self._filterthreshold_:
+                        return 1
+        return 0
+
+    def _parallel_calculate_comparison_score_(self, query_index, row_index):
+        '''
+        Return the score vector between the query index and the row index
+        :param query_index: 
+        :param row_index: 
+        :return: comparison score
+        '''
+        score = pd.Series()
+        # fill the table with the features calculated
+        for c in self.featurecols:
+            # fill the table with the features specific to each row
+            score[c + '_feat_row'] = self.df.loc[row_index, c].copy()
+            # fill the table with the features of the query
+            score[c + '_feat_query'] = self.df.loc[query_index, c]
+            score[c + '_feat_diff'] = score[c + '_feat_row'] - self.df.loc[query_index, c]
+
+        # calculate the various distances
+        for c in ['companyname', 'companyname_wostopwords', 'companyname_acronym',
+                  'streetaddress', 'streetaddress_wostopwords', 'cityname', 'postalcode']:
+            score[c + '_fuzzyscore'] = surfunc.compare_twostrings(self.df.loc[row_index, c],
+                                                                  self.df.loc[query_index, c])
+
+        # token scores
+        for c in ['companyname_wostopwords', 'streetaddress_wostopwords']:
+            score[c + '_tokenscore'] = surfunc.compare_tokenized_strings(
+                self.df.loc[row_index, c], self.df.loc[query_index, c], tokenthreshold=0.5, countthreshold=0.5)
+
+        # acronym score
+        c = 'companyname'
+        score['companyname_acronym_tokenscore'] = surfunc.compare_acronyme(self.df.loc[query_index, c],
+                                                                           self.df.loc[row_index, c])
+
+        # latlng score
+        c = 'latlng'
+        score[c + '_geoscore'] = surfunc.geodistance(self.df.loc[query_index, c], self.df.loc[row_index, c])
+
+        # exactscore
+        for c in ['country', 'state', 'dunsnumber', 'postalcode_1stdigit', 'postalcode_2digits', 'taxid',
+                  'registerid']:
+            score[c + '_exactscore'] = surfunc.exactmatch(self.df.loc[query_index, c], self.df.loc[row_index, c])
+
+        score = score.fillna(-1)
+        return score
+
+    def _parallel_predict_(self, comparison_score):
+        '''
+        returns boolean if the comparison_score should be a match or not
+        Args:
+            comparison_score: score vector
+
+        Returns:
+        boolean True if it is a match False otherwise
+        '''
+
+        #check column length are adequate
+        if len(self.traincols)!= len(comparison_score.index):
+            additionalcolumns = list(filter(lambda x:x not in self.traincols,comparison_score.index))
+            if len(additionalcolumns)>0:
+                print('unknown columns in traincols',additionalcolumns)
+            missingcolumns = list(filter(lambda x: x not in comparison_score.index, self.traincols))
+            if len(missingcolumns)>0:
+                print('columns not found in scoring vector',missingcolumns)
+
+
+        proba = self.model.predict_proba(comparison_score)[1]
+        if proba >= self._decisionthreshold_:
+            return True
+        else:
+            return False
+
+    def _parallel_computation(self, query_index, row_index):
+        '''
+        for each row for a query, returns True (ismatch) or False (is not a match)
+        Args:
+            query_index: index of the query
+            row_index: index of the possible match
+
+        Returns:
+        boolean True if it is a match False otherwise
+        '''
+
+        if self._parallel_filter_(self, query_index, row_index) is False:
+            return False
+        else:
+            comparisonscore = self._parallel_calculate_comparison_score_(query_index, row_index)
+            ismatch = self._parallel_predict_(self,comparison_score=comparisonscore)
+            return ismatch
 
     def clean_db(self):
         """
@@ -85,12 +183,12 @@ class Suricate:
         """
         companystopwords = companystopwords_list
         streetstopwords = streetstopwords_list
-        endingwords=endingwords_list
-        #check if columns is in the existing database, other create a null one
-        for c in [self.idcol,self.queryidcol,'latlng','state']:
+        endingwords = endingwords_list
+        # check if columns is in the existing database, other create a null one
+        for c in [self.idcol, self.queryidcol, 'latlng', 'state']:
             if c not in self.df.columns:
-                self.df[c]=None
-          
+                self.df[c] = None
+
         # normalize the strings
         for c in ['companyname', 'streetaddress', 'cityname']:
             self.df[c] = self.df[c].apply(surfunc.normalizechars)
@@ -100,28 +198,29 @@ class Suricate:
 
         # convert all duns number as strings with 9 chars
         self.df['dunsnumber'] = self.df['dunsnumber'].apply(lambda r: surfunc.convert_int_to_str(r, 9))
+
         def cleanduns(s):
-            #remove bad duns like DE0000000
+            # remove bad duns like DE0000000
             if pd.isnull(s):
                 return None
             else:
                 s = str(s).rstrip('00000')
-                if len(s)<=5:
+                if len(s) <= 5:
                     return None
                 else:
                     return s
 
-        self.df['dunsnumber']=self.df['dunsnumber'].apply(cleanduns)
+        self.df['dunsnumber'] = self.df['dunsnumber'].apply(cleanduns)
 
         # convert all postal codes to strings
         self.df['postalcode'] = self.df['postalcode'].apply(lambda r: surfunc.convert_int_to_str(r))
 
-        #convert all taxid and registerid to string
-        for c in ['taxid','registerid']:
+        # convert all taxid and registerid to string
+        for c in ['taxid', 'registerid']:
             if c in self.df.columns:
-                self.df[c]=self.df[c].astype(str).replace(surfunc.nadict)
+                self.df[c] = self.df[c].astype(str).replace(surfunc.nadict)
             else:
-                self.df[c]=None
+                self.df[c] = None
 
         # remove stopwords from company names
         self.df['companyname_wostopwords'] = self.df['companyname'].apply(
@@ -140,10 +239,10 @@ class Suricate:
 
         # Take the first digits and the first two digits of the postal code
         self.df['postalcode_1stdigit'] = self.df['postalcode'].apply(
-            lambda r:np.nan if pd.isnull(r) else str(r)[:1]
+            lambda r: np.nan if pd.isnull(r) else str(r)[:1]
         )
         self.df['postalcode_2digits'] = self.df['postalcode'].apply(
-            lambda r:np.nan if pd.isnull(r) else str(r)[:2]
+            lambda r: np.nan if pd.isnull(r) else str(r)[:2]
         )
 
         # Calculate length of strings
@@ -191,15 +290,15 @@ class Suricate:
 
         return None
 
-    def fitmodel(self, training_set,n_estimators=2000,used_model=None):
+    def fitmodel(self, training_set, n_estimators=2000, used_model=None):
         """
         this function initiate and fits the model on the specified training table
         Args:
             training_set (pd.DataFrame): supervised learning training table, has ismatch column
             n_estimators(int): number of estimators used for standard RandomForestModel
             used_model (scikit-learn Model): model used to do the predicition, default RandomForest model
-            
-     
+
+
         Returns:
 
         """
@@ -239,7 +338,7 @@ class Suricate:
         this function returns a random index with no group id to start the deduplication process
         Args:
             in_index: index or list, default None the query should be in the selected index
-
+    
         Returns:
             pd.Series:a row of the dataframe
         """
@@ -247,14 +346,14 @@ class Suricate:
         if in_index is None:
             in_index = self.df.index
 
-        x=self.df.loc[in_index]
-        possiblechoices = x.loc[(x['groupid']==0) | (x['groupid'].isnull())].index
+        x = self.df.loc[in_index]
+        possiblechoices = x.loc[(x['groupid'] == 0) | (x['groupid'].isnull())].index
         if possiblechoices.shape[0] == 0:
             del x
             return None
         else:
             a = np.random.choice(possiblechoices)
-            del x,possiblechoices
+            del x, possiblechoices
             return a
 
     def _update_idcol_(self, goodmatches_index, query_index):
@@ -263,9 +362,9 @@ class Suricate:
         Args:
             goodmatches_index(list): index of the group of matches
             query_index: index to be used to save the original id of the matching record
-
+    
         Returns:
-
+    
         """
         # Take the maximum existing group id
         database_matching_id_max = self.df[self.idcol].max()
@@ -281,124 +380,47 @@ class Suricate:
                 # otherwise create a new one
                 goodmatches_matching_id = database_matching_id_max + 1
 
-            #print('new match',goodmatches_matching_id)
+            # print('new match',goodmatches_matching_id)
             # take all lines who don't have a group id and give them the new id and save the index of the query
             nonallocatedmatches_index = self.df.loc[goodmatches_index].loc[
                 self.df.loc[goodmatches_index, self.idcol].isnull()].index
-            #print('len of non allocated matches',len(nonallocatedmatches_index))
+            # print('len of non allocated matches',len(nonallocatedmatches_index))
             self.df.loc[nonallocatedmatches_index, self.idcol] = goodmatches_matching_id
             self.df.loc[nonallocatedmatches_index, self.queryidcol] = query_index
-            
-            #update log table information
-            self.logdf.loc[self.logrow,'goodmatches_nrows']=len(goodmatches_index)
-            self.logdf.loc[self.logrow,'deduplicated_nrows']=len(nonallocatedmatches_index)
-            self.logdf.loc[self.logrow,'matchid']=goodmatches_matching_id
+
         else:
-            #update log table information
-            self.logdf.loc[self.logrow,'goodmatches_nrows']=0
-            self.logdf.loc[self.logrow,'deduplicated_nrows']=None
-            self.logdf.loc[self.logrow,'matchid']=None
             pass
         return None
 
-    def _filter_database_(self, query_index):
-        """
-        return a reduced index of the database
-        Args:
-            query_index: index of the query
 
-        Returns:
-            list, index filtered
-        """
-        start=pd.datetime.now()
-        ### filter search on country
-        required_index = []
-        query = self.df.loc[query_index]
-        for c in ['country']:
-            if c in query.index:
-                if pd.isnull(query[c]) is False:
-                    b = query[c]
-                    temp_index = self.df.loc[(self.df[c].apply(lambda a: surfunc.exactmatch(a, b)) == 1)].index.tolist()
-                    required_index = list(set(temp_index + required_index))
-                    del temp_index
 
-        # add fuzzy matching criterias based on the required index calculated above
-        #I removed cityname to speed up the calculations
-        df2 = self.df.loc[required_index]
-        filtercols=['companyname', 'streetaddress']
-        for c in filtercols:
-            if c in query.index:
-                if pd.isnull(query[c]) is False:
-                    b = query[c]
-                    df2[c+'_score']=df2[c].apply(lambda a: surfunc.compare_twostrings(a, b))
-                else:
-                    df2[c+'_score']=0
-        scorecols=[c+'_score' for c in filtercols]
-        df2['filter_score']=df2[scorecols].fillna(0).max(axis=1)
-        temp_index = df2.loc[df2['filter_score']>=self._filterthreshold_].index.tolist()
-        all_index=list(set([query_index]+temp_index))
-
-        # add dunsnumber / code information where exact match is asked
-        exact_index = []
-        for c in ['dunsnumber']:
-            if c in query.index:
-                if pd.isnull(query[c]) is False:
-                    b = query[c]
-                    temp_index = self.df.loc[(self.df[c].apply(lambda a: surfunc.exactmatch(a, b)) == 1)].index.tolist()
-                    exact_index = list(set(temp_index + exact_index))
-
-        all_index = list(set(all_index + exact_index + [query_index]))
-        
-        #update log table information
-                #update the log file
-        end=pd.datetime.now()
-        self.logdf.loc[self.logrow,'time_filtering_s']=(end-start).total_seconds()
-        self.logdf.loc[self.logrow,'filtered_nrows']=len(all_index)
-        return all_index
-
-    def launch_calculation(self, nmax, in_index=None):
+    def launch_calculation(self, nmax=None, in_index=None):
         """
         launches the deduplication process
         Args:
             nmax (int): maximum number of occurences
             in_index (list): deduplicate the following index
-
+    
         Returns:
-
+        None
         """
+        if nmax is None:
+            if in_index is not None:
+                nmax = len(in_index)
+            else:
+                print('No maximum number given or index given')
+                return None
 
-        print('deduplication started at ',pd.datetime.now())
+        print('deduplication started at ', pd.datetime.now())
         for countdown in range(nmax):
             query_index = self._generate_query_index_(in_index)
             if query_index is None:
                 print('no valid query available')
                 break
             else:
-                #update log table information and display information
-                self.logdf.loc[self.logrow,'countdown']=countdown
-                self.logdf.loc[self.logrow,'query_index']=query_index
-                start=pd.datetime.now()
-                self.logdf.loc[self.logrow,'timestamp_start']=start
-                self.logdf.loc[self.logrow,'database_nrows']=self.df.shape[0]
                 goodmatches_index = self._return_goodmatches_(query_index=query_index)
-                
-
-                
                 self._update_idcol_(goodmatches_index, query_index)
-                
-                #update log table information and display information
-                end = pd.datetime.now()
-                self.logdf.loc[self.logrow,'timestamp_end']=end
-                self.logdf.loc[self.logrow,'totalallocated_nrows']=(self.df[self.idcol].isnull()==False).sum()
-                duration = (end - start).total_seconds()
-                self.logdf.loc[self.logrow,'duration_s']=duration
-                self.logdf.loc[self.logrow,'time_other_s']=self.logdf.loc[self.logrow,'duration_s']-(
-                        self.logdf.loc[self.logrow,'time_filtering_s']+self.logdf.loc[self.logrow,'time_scoring_s']+self.logdf.loc[self.logrow,'time_predicting_s'])        
-                if self.verbose is True:
-                    print('countdown',countdown+1,'of total ', nmax,' time ',duration,'n_deduplicated',self.logdf.loc[self.logrow,'deduplicated_nrows'])
-                self.logrow+=1
-                
-        print('deduplication finished at ',pd.datetime.now())
+        print('deduplication finished at ', pd.datetime.now())
 
         return None
 
@@ -407,7 +429,7 @@ class Suricate:
         return a dataframe filled with numerical values corresponding to the possible matches
         Args:
             query_index: index of the query
-
+    
         Returns:
             pd.DataFrame
         """
@@ -424,7 +446,7 @@ class Suricate:
             tablescore[c + '_feat_row'] = self.df.loc[database_index, c].copy()
             # fill the table with the features of the query
             tablescore[c + '_feat_query'] = query.loc[c]
-            tablescore[c+'_feat_diff']=tablescore[c + '_feat_row']-query.loc[c]
+            tablescore[c + '_feat_diff'] = tablescore[c + '_feat_row'] - query.loc[c]
 
         # calculate the various distances
         for c in ['companyname', 'companyname_wostopwords', 'companyname_acronym',
@@ -432,7 +454,7 @@ class Suricate:
             b = query.loc[c]
             tablescore[c + '_fuzzyscore'] = self.df[c].apply(lambda a: surfunc.compare_twostrings(a, b))
             del b
-            
+
         for c in ['companyname_wostopwords', 'streetaddress_wostopwords']:
             b = query.loc[c]
             tablescore[c + '_tokenscore'] = self.df[c].apply(
@@ -440,59 +462,48 @@ class Suricate:
             del b
 
         b = query.loc['companyname']
-        tablescore['companyname_acronym_tokenscore'] = self.df['companyname'].apply(lambda a: surfunc.compare_acronyme(a, b))
+        tablescore['companyname_acronym_tokenscore'] = self.df['companyname'].apply(
+            lambda a: surfunc.compare_acronyme(a, b))
         del b
-        
+
         b = query.loc['latlng']
         tablescore['latlng_geoscore'] = self.df['latlng'].apply(lambda a: surfunc.geodistance(a, b))
         del b
-        
-        for c in ['country','state', 'dunsnumber','postalcode_1stdigit','postalcode_2digits','taxid','registerid']:
+
+        for c in ['country', 'state', 'dunsnumber', 'postalcode_1stdigit', 'postalcode_2digits', 'taxid', 'registerid']:
             b = query.loc[c]
             tablescore[c + '_exactscore'] = self.df[c].apply(lambda a: surfunc.exactmatch(a, b))
             del b
-        tablecols=tablescore.columns.tolist()
-        missingcolumns=list(filter(lambda x:x not in self.traincols,tablecols))
-        if len(missingcolumns)>0:
-            raise NameError('Missing columns not found in calculated score but present in training table'+str(missingcolumns))
-        newcolumns=list(filter(lambda x:x not in tablecols,self.traincols))
-        if len(newcolumns)>0:
-            raise NameError('New columns present in calculated score but not found in training table'+str(missingcolumns))            
-        
-        # rearrange the columns according to the tablescore order
-        tablescore=tablescore[self.traincols]
-        
+
+        tablecols = tablescore.columns.tolist()
+        missingcolumns = list(filter(lambda x: x not in self.traincols, tablecols))
+        if len(missingcolumns) > 0:
+            raise NameError(
+                'Missing columns not found in calculated score but present in training table' + str(missingcolumns))
+        newcolumns = list(filter(lambda x: x not in tablecols, self.traincols))
+        if len(newcolumns) > 0:
+            raise NameError('New columns present in calculated score but not found in training table' + str(missingcolumns))
+
+            # rearrange the columns according to the tablescore order
+        tablescore = tablescore[self.traincols]
+
         return tablescore
+
 
     def _return_goodmatches_(self, query_index):
         """
         return the index of the positive matches of the query
         Args:
             query_index: index of the query
-
+    
         Returns:
             pandas.Series().index: positive matches
-
+    
         """
         # Create the scoring table
-        start=pd.datetime.now()
-        tablescore = self._calculate_scored_features_(query_index)
-        #update the log file
-        end=pd.datetime.now()
-        self.logdf.loc[self.logrow,'time_scoring_s']=(end-start).total_seconds()
-        #fillna values
-        tablescore=tablescore.fillna(-1)
-        
-        start=pd.datetime.now()
-        # Launche the model on it
-        y_proba=pd.DataFrame(index=tablescore.index,data=self.model.predict_proba(tablescore))[1]
-        y_pred = (y_proba>=self._decisionthreshold_)
-        y_pred.loc[query_index]=True
-        # Filter on positive matches
-        goodmatches_index = y_pred.loc[y_pred].index
-        #update the log file
-        end=pd.datetime.now()
-        self.logdf.loc[self.logrow,'time_predicting_s']=(end-start).total_seconds()
+        start = pd.datetime.now()
+        ismatch_boolean = pd.Series(index=self.df.index,data=self.df.index).apply(lambda ix:self._parallel_computation(query_index,ix))
+        goodmatches_index=ismatch_boolean.loc[ismatch_boolean]
         return goodmatches_index
 
     def _generate_labelled_scored_table_(self, query_index):
@@ -500,10 +511,10 @@ class Suricate:
         This functions uses existing group id to manually label the scoring table to prepare the supervised learning
         Args:
             query_index: index of the query
-
+    
         Returns:
             pandas.DataFrame: labelled score table
-
+    
         """
 
         # get the id of the group of the query
@@ -518,8 +529,9 @@ class Suricate:
             verifiedresults = (groupresults == groupid)  # verified results is a boolean
             tablescore['ismatch'] = verifiedresults
             return tablescore
-        
-    def showgroup(self, groupid,cols=None):
+
+
+    def showgroup(self, groupid, cols=None):
         '''
         show the results from the deduplication
         Args:
@@ -530,9 +542,10 @@ class Suricate:
         '''
         if cols is None:
             cols = self.displaycols
-        x = self.df.loc[self.df[self.idcol]==groupid,cols]
+        x = self.df.loc[self.df[self.idcol] == groupid, cols]
         return x
-    
+
+
     def showpossiblematches(self, query_index):
         '''
         show the results from the deduplication
@@ -542,12 +555,13 @@ class Suricate:
             pd.DataFrame
         '''
         tablescore = self._calculate_scored_features_(query_index)
-        y_proba=pd.DataFrame(index=tablescore.index,data=self.model.predict_proba(tablescore))[1]
-        x=self.df.loc[y_proba.index,self.displaycols].copy()
-        x['score']=y_proba
-        x.sort_values(by='score',inplace=True)
+        y_proba = pd.DataFrame(index=tablescore.index, data=self.model.predict_proba(tablescore))[1]
+        x = self.df.loc[y_proba.index, self.displaycols].copy()
+        x['score'] = y_proba
+        x.sort_values(by='score', inplace=True)
         return x
-        
+
+
     def build_training_table_from_grouplist(self, verified_groups_list):
         """
         build a scoring table to fit the model using the labels already classified
@@ -575,12 +589,13 @@ class Suricate:
             print('building time', duration, 'seconds')
             print('shape of training table', alldata.shape[0])
             print('time per verified line', int(duration / len(possibleindex)))
-            percent_true=alldata['ismatch'].sum()/alldata.shape[0]
-            print('percent true','{:.0%}'.format(percent_true))
-            print('mean # of lines filtered for each verified line',int(alldata.shape[0]/len(possibleindex)))
+            percent_true = alldata['ismatch'].sum() / alldata.shape[0]
+            print('percent true', '{:.0%}'.format(percent_true))
+            print('mean # of lines filtered for each verified line', int(alldata.shape[0] / len(possibleindex)))
         return alldata
 
-    def building_training_table_from_queryids(self,verified_queries):
+
+    def building_training_table_from_queryids(self, verified_queries):
         """
         build a scoring table to fit the model using the labels already classified
         Args:
@@ -591,7 +606,7 @@ class Suricate:
         alldata = pd.DataFrame()
         start = pd.datetime.now()
         for qix in verified_queries:
-            if pd.isnull(self.df.loc[qix,'groupid']):
+            if pd.isnull(self.df.loc[qix, 'groupid']):
                 pass
             else:
                 scoredtable = self._generate_labelled_scored_table_(qix)
@@ -605,76 +620,77 @@ class Suricate:
             duration = (end - start).total_seconds()
             print('building time', duration, 'seconds')
             print('shape of training table', alldata.shape[0])
-            percent_true=alldata['ismatch'].sum()/alldata.shape[0]
-            print('percent true','{:.0%}'.format(percent_true))
+            percent_true = alldata['ismatch'].sum() / alldata.shape[0]
+            print('percent true', '{:.0%}'.format(percent_true))
 
         return alldata
 
-    def export_results_to_excel(self,filename,*args,**kwargs):
+
+    def export_results_to_excel(self, filename, *args, **kwargs):
         self.df.sort_values(by=[
-            self.idcol,'companyname','dunsnumber','taxid','registerid','streetaddress'],inplace=True,ascending=True)
+            self.idcol, 'companyname', 'dunsnumber', 'taxid', 'registerid', 'streetaddress'], inplace=True, ascending=True)
 
-        self.df[self.displaycols].to_excel(filename,*args,**kwargs)
+        self.df[self.displaycols].to_excel(filename, *args, **kwargs)
 
 
-companystopwords_list=['aerospace',
- 'ag',
- 'and',
- 'co',
- 'company',
- 'consulting',
- 'corporation',
- 'de',
- 'deutschland',
- 'dr',
- 'electronics',
- 'engineering',
- 'europe',
- 'formation',
- 'france',
- 'gmbh',
- 'group',
- 'hotel',
- 'inc',
- 'ingenierie',
- 'international',
- 'kg',
- 'la',
- 'limited',
- 'llc',
- 'ltd',
- 'ltda',
- 'management',
- 'of',
- 'oy',
- 'partners',
- 'restaurant',
- 'sa',
- 'sarl',
- 'sas',
- 'service',
- 'services',
- 'sl',
- 'software',
- 'solutions',
- 'srl',
- 'systems',
- 'technologies',
- 'technology',
- 'the',
- 'uk',
- 'und']
-streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse','strae']
+companystopwords_list = ['aerospace',
+                         'ag',
+                         'and',
+                         'co',
+                         'company',
+                         'consulting',
+                         'corporation',
+                         'de',
+                         'deutschland',
+                         'dr',
+                         'electronics',
+                         'engineering',
+                         'europe',
+                         'formation',
+                         'france',
+                         'gmbh',
+                         'group',
+                         'hotel',
+                         'inc',
+                         'ingenierie',
+                         'international',
+                         'kg',
+                         'la',
+                         'limited',
+                         'llc',
+                         'ltd',
+                         'ltda',
+                         'management',
+                         'of',
+                         'oy',
+                         'partners',
+                         'restaurant',
+                         'sa',
+                         'sarl',
+                         'sas',
+                         'service',
+                         'services',
+                         'sl',
+                         'software',
+                         'solutions',
+                         'srl',
+                         'systems',
+                         'technologies',
+                         'technology',
+                         'the',
+                         'uk',
+                         'und']
+streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse', 'strae']
 endingwords_list = ['strasse', 'str', 'strae']
-_training_table_filename_='training_table_prepared_201708_69584rows.csv'
-_logfile_filename_='log_table.csv'
+_training_table_filename_ = 'training_table_prepared_201708_69584rows.csv'
+_logfile_filename_ = 'log_table.csv'
+
 
 def standard_model(df,
-                warmstart=False,
-                training_filename=_training_table_filename_,
-                logfilename=_logfile_filename_,
-                idcol='groupid',
-                queryidcol='queryid'):
+                   warmstart=False,
+                   training_filename=_training_table_filename_,
+                   idcol='groupid',
+                   queryidcol='queryid'):
     '''
     create, clean and fit the model to the given database
     :param df: database to be deduplicated
@@ -685,19 +701,17 @@ def standard_model(df,
     :param queryidcol: name of the column where the original query is stored
     :return: Suricate model ready to launch calculations
     '''
-    training_table = pd.read_csv(training_filename,encoding='utf-8',sep='|')
-    #logtable=pd.read_csv(logfilename,index_col=0,encoding='utf-8',sep='|')
-    idcol=idcol
-    queryidcol=queryidcol
-    sur=Suricate(df=df,
-                 warmstart=warmstart,
-                 idcol=idcol,
-                 queryidcol=queryidcol)
+    training_table = pd.read_csv(training_filename, encoding='utf-8', sep='|')
+    idcol = idcol
+    queryidcol = queryidcol
+    sur = Suricate(df=df,
+                   warmstart=warmstart,
+                   idcol=idcol,
+                   queryidcol=queryidcol)
     sur.fitmodel(training_set=training_table)
     return sur
 
-#%%
+
+# %%
 if __name__ == '__main__':
     pass
-    
-
