@@ -161,7 +161,7 @@ class Suricate:
             else:
                 return False
 
-    def _parallel_computation(self, query_index, row_index,return_proba = False):
+    def step_one_filter(self,query_index):
         '''
         for each row for a query, returns True (ismatch) or False (is not a match)
         Args:
@@ -172,13 +172,12 @@ class Suricate:
         Returns:
         boolean True if it is a match False otherwise
         '''
+        filteredlist=self.df['Index'].apply(lambda r:self._parallel_filter_(query_index,r))
+        return filteredlist.loc[filteredlist].index
 
-        if self._parallel_filter_(query_index, row_index) is False:
-            return False
-        else:
-            comparisonscore = self._parallel_calculate_comparison_score_(query_index, row_index)
-            ismatch = self._parallel_predict_(comparison_score=comparisonscore,return_proba=return_proba)
-            return ismatch
+    def step_two_score(self,query_index):
+        tablescore=self.df[['Index']].apply(lambda r:self._parallel_calculate_comparison_score_(query_index,r))
+        return tablescore
 
     def clean_db(self):
         """
@@ -314,7 +313,7 @@ class Suricate:
         # define the model
         if used_model is None:
             from sklearn.ensemble import RandomForestClassifier
-            self.model = RandomForestClassifier(n_estimators=2000)
+            self.model = RandomForestClassifier(n_estimators=n_estimators)
         else:
             self.model = used_model
 
