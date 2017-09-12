@@ -392,6 +392,7 @@ class Suricate:
 
     def step_two_score(self,filtered_index):
         tablescore=self.df.loc[filtered_index,'Index'].apply(lambda r:self._parallel_calculate_comparison_score_(r))
+        #do not forget the order of the columns...
         return tablescore
 
     def _parallel_calculate_comparison_score_(self, row_index):
@@ -430,16 +431,32 @@ class Suricate:
                   'registerid']:
             score[c + '_exactscore'] = surfunc.exactmatch(self.query[c], self.df.loc[row_index, c])
 
+        #fill na values
         score = score.fillna(-1)
+
+        #re-arrange order columns
+        score=score[self.traincols]
         return score
 
     def step_three_predict(self,tablescore):
-        y_proba=tablescore.apply(lambda r:self._parallel_predict_(r),axis=1)
+        # check column length are adequate
+        if len(self.traincols) != len(tablescore.columns):
+            additionalcolumns = list(filter(lambda x: x not in self.traincols, tablescore.columns))
+            if len(additionalcolumns) > 0:
+                print('unknown columns in traincols', additionalcolumns)
+            missingcolumns = list(filter(lambda x: x not in tablescore.columns, self.traincols))
+            if len(missingcolumns) > 0:
+                print('columns not found in scoring vector', missingcolumns)
+        #check column order
+        tablescore=tablescore[self.traincols]
+
+        y_proba=pd.DataFrame(self.model.predict_proba(tablescore),index=tablescore.index)[1]
+
         return y_proba
 
     def _parallel_predict_(self, comparison_score):
         '''
-        returns boolean if the comparison_score should be a match or not
+        Not maintained returns boolean if the comparison_score should be a match or not
         Args:
             comparison_score: score vector
 
@@ -447,14 +464,6 @@ class Suricate:
         boolean True if it is a match False otherwise
         '''
 
-        # check column length are adequate
-        if len(self.traincols) != len(comparison_score.index):
-            additionalcolumns = list(filter(lambda x: x not in self.traincols, comparison_score.index))
-            if len(additionalcolumns) > 0:
-                print('unknown columns in traincols', additionalcolumns)
-            missingcolumns = list(filter(lambda x: x not in comparison_score.index, self.traincols))
-            if len(missingcolumns) > 0:
-                print('columns not found in scoring vector', missingcolumns)
 
         proba = self.model.predict_proba(comparison_score.values.reshape(1, -1))[0][1]
 
