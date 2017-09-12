@@ -257,7 +257,7 @@ class Suricate:
                 n_deduplicated = self._update_idcol_(goodmatches_index, query_index)
                 end = pd.datetime.now()
                 duration = (end - start).total_seconds()
-                print('record', query_index, 'countdownm', countdown, 'of', nmax, 'n_deduplicated', n_deduplicated,
+                print('record', query_index, 'countdown', countdown, 'of', nmax, 'n_deduplicated', n_deduplicated,
                       'duration', duration)
         print('deduplication finished at ', pd.datetime.now())
 
@@ -289,6 +289,7 @@ class Suricate:
     def _return_goodmatches_(self,query_index):
         predictions=self._return_predictions_(query_index)
         goodmatches=predictions.loc[predictions>self._decisionthreshold_].index
+        goodmatches=list(set(goodmatches+[query_index]))
         return goodmatches
 
     def _return_predictions_(self, query_index):
@@ -540,7 +541,7 @@ companystopwords_list = ['aerospace',
                          'und']
 streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse', 'strae']
 endingwords_list = ['strasse', 'str', 'strae']
-_training_table_filename_ = 'training_table_prepared_201708_79319rows.csv'
+_training_table_filename_ = 'training_table_prepared_20170911_79319rows.csv'
 
 
 def standard_application(df,
