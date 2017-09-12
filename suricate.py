@@ -289,7 +289,6 @@ class Suricate:
     def _return_goodmatches_(self,query_index):
         predictions=self._return_predictions_(query_index)
         goodmatches=predictions.loc[predictions>self._decisionthreshold_].index
-        goodmatches=list(set(goodmatches+[query_index]))
         return goodmatches
 
     def _return_predictions_(self, query_index):
