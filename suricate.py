@@ -13,7 +13,7 @@ import suricatefunctions as surfunc
 
 class Suricate:
     """
-    A class that uses a pandas.DataFrame to store the data (self.df) and special methods to eliminate doublons
+    A class that uses a pandas.DataFrame to store the data (self.df) and special methods (sklearn models) to eliminate doublons
     """
 
     def __init__(self, df, warmstart=True, idcol='groupid',
@@ -249,20 +249,27 @@ class Suricate:
             if in_index is not None:
                 nmax = len(in_index)
             else:
-                print('No maximum number given or index given')
-                return None
+                raise('No maximum number given or index given')
 
-        print('deduplication started at ', pd.datetime.now())
+        if self.verbose:
+            print('deduplication started at ', pd.datetime.now())
+
+        #loop on the rows to deduplicate
         for countdown in range(nmax):
+            #find a row to deduplicate
             query_index = self._generate_query_index_(in_index)
+
             if query_index is None:
                 print('no valid query available')
                 break
             else:
-                print('countdown', countdown+1, 'of', nmax,':')
+                if self.verbose:
+                    print('countdown', countdown+1, 'of', nmax,':')
+                #deduplicate that row
                 self._deduplicate_row_(query_index)
 
-        print('deduplication finished at ', pd.datetime.now())
+        if self.verbose:
+            print('deduplication finished at ', pd.datetime.now())
 
         return None
 
@@ -280,7 +287,7 @@ class Suricate:
             in_index = self.df.index
 
         x = self.df.loc[in_index]
-        possiblechoices = x.loc[(x['groupid'] == 0) | (x['groupid'].isnull())].index
+        possiblechoices = x.loc[(x[self.idcol] == 0) | (x[self.idcol].isnull())].index
         if possiblechoices.shape[0] == 0:
             del x
             return None
@@ -290,17 +297,46 @@ class Suricate:
             return a
 
     def _deduplicate_row_(self,query_index):
-        start = pd.datetime.now()
+        '''
+        Deduplicate a row (search for duplicates in the database and update the groupid col)
+        Args:
+            query_index: index of the row to be deduplicated
+
+        Returns:
+            None
+        '''
+        if self.verbose:
+            start = pd.datetime.now()
+
+        #return the good matches as calculated by the model
         goodmatches_index = self._return_goodmatches_(query_index=query_index)
+
+        #attribute/update the groupid of those matches
         n_deduplicated = self._update_idcol_(goodmatches_index, query_index)
-        end = pd.datetime.now()
-        duration = (end - start).total_seconds()
-        print('record', query_index, 'n_deduplicated', n_deduplicated, 'duration', duration)
+
+        if self.verbose:
+            end = pd.datetime.now()
+            duration = (end - start).total_seconds()
+            print('record', query_index, 'n_deduplicated', n_deduplicated, 'duration', duration)
+
         return None
 
     def _return_goodmatches_(self,query_index):
+        '''
+        return the index of the good matches as judged by the deduplication algorithm
+        Args:
+            query_index: index of the query which serves as the search for duplicates
+
+        Returns:
+            pd.Series().index
+        '''
+
+        #return the probability of being a match (as a Series, score 0->1)
         predictions=self._return_predictions_(query_index)
+
+        #Select only the matches where the probability is greater than the decision threshold
         goodmatches=predictions.loc[predictions>self._decisionthreshold_].index
+
         return goodmatches
 
     def _return_predictions_(self, query_index):
@@ -326,6 +362,7 @@ class Suricate:
     def _update_idcol_(self, goodmatches_index, query_index):
         """
         attribute a new matching id to the group of matches
+        Modify the self.df[self.idcol] column of the database
         Args:
             goodmatches_index(list): index of the group of matches
             query_index: index to be used to save the original id of the matching record
@@ -361,8 +398,9 @@ class Suricate:
     def step_one_filter(self):
         '''
         for each row for a query, returns True (ismatch) or False (is not a match)
+        No arguments since the query has been saved in self.query
         Args:
-
+            
         Returns:
         boolean True if it is a match False otherwise
         '''
@@ -386,8 +424,9 @@ class Suricate:
         else:
             # else if some ID match
             for c in ['dunsnumber', 'taxid', 'registerid']:
-                if self.query[c] == self.df.loc[row_index, c]:
-                    return True
+                if pd.isnull(self.query[c])==False:
+                    if self.query[c] == self.df.loc[row_index, c] :
+                        return True
             # if they are not the same country we reject
             c='country'
             if self.query[c] != self.df.loc[row_index, c]:
@@ -402,14 +441,22 @@ class Suricate:
         return False
 
     def step_two_score(self,filtered_index):
+        '''
+        Return a comparison table for all indexes of the filtered_index (as input)
+        Args:
+            filtered_index: index of rows on which to perform the deduplication
+
+        Returns:
+            pd.DataFrame, table of scores, where each column is a score (should be the same as self.traincols).
+        '''
         tablescore=self.df.loc[filtered_index,'Index'].apply(lambda r:self._parallel_calculate_comparison_score_(r))
-        #do not forget the order of the columns...
         return tablescore
 
     def _parallel_calculate_comparison_score_(self, row_index):
         '''
         Return the score vector between the query index and the row index
-        :param row_index: 
+        The query has been saved in self.query for easier access
+        :param row_index: index of the row to be compared
         :return: comparison score
         '''
 
@@ -450,6 +497,14 @@ class Suricate:
         return score
 
     def step_three_predict(self,tablescore):
+        '''
+        from a scoring table, apply the model and return the probability of being a match
+        Args:
+            tablescore: scoring table. Careful that column names, length and order is the same as the training table
+
+        Returns:
+            pd.Series of being a match
+        '''
         # check column length are adequate
         if len(self.traincols) != len(tablescore.columns):
             additionalcolumns = list(filter(lambda x: x not in self.traincols, tablescore.columns))
@@ -465,24 +520,9 @@ class Suricate:
 
         return y_proba
 
-    def _parallel_predict_(self, comparison_score):
-        '''
-        Not maintained returns boolean if the comparison_score should be a match or not
-        Args:
-            comparison_score: score vector
-
-        Returns:
-        boolean True if it is a match False otherwise
-        '''
-
-
-        proba = self.model.predict_proba(comparison_score.values.reshape(1, -1))[0][1]
-
-        return proba
-
     def showgroup(self, groupid, cols=None):
         '''
-        show the results from the deduplication
+        show all the records that share the same groupid
         Args:
             groupid (int): int, id of he group to be displayed
             cols (list), list, default displaycols, columns ot be displayed
@@ -496,7 +536,7 @@ class Suricate:
 
     def showpossiblematches(self, query_index):
         '''
-        show the results from the deduplication
+        show the possible results from the deduplication
         Args:
             query_index (index): index on which to check possible matches
         Returns:
@@ -512,6 +552,23 @@ class Suricate:
         return x
 
     def extract_possible_pair(self,query_index,on_col='systemid',on_value='P11'):
+        '''
+        extract the closest match, from the group id, by filtering on a column and on a value
+        Examples :
+        name    city    systemid    groupid
+        foo     munich  p11         1
+        FOO     munich  f40         1
+        bar     munich  p11         2
+        if we apply that function to the second line, it will return the closest match possible (from the groupid list)
+        by filtering out those where systemid is different from p11 (on_col = systemid, on_value='p11')
+        Args:
+            query_index: index of the query you want to test
+            on_col: filter in a column
+            on_value: 
+
+        Returns:
+        index value
+        '''
         if self.df.loc[query_index,self.idcol]==0:
             self._deduplicate_row_(query_index)
         groupid=self.df.loc[query_index,self.idcol]
