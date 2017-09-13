@@ -72,6 +72,10 @@ class Suricate:
 
         self.df['Index'] = self.df.index
 
+        #Create an alert if the index is not unique
+        if self.df['Index'].unique().shape[0]!=self.df.shape[0]:
+            raise('Error: index is not unique')
+
         # check if columns is in the existing database, other create a null one
         for c in [self.idcol, self.queryidcol, 'latlng', 'state']:
             if c not in self.df.columns:
@@ -224,7 +228,10 @@ class Suricate:
             self.traincols = traincols
 
         if warmstart is False:
-            self.model_train(training_set=training_set)
+            if training_set is None:
+                raise('Error no training set provided')
+            else:
+                self.model_train(training_set=training_set)
 
         return None
 
@@ -252,13 +259,9 @@ class Suricate:
                 print('no valid query available')
                 break
             else:
-                start = pd.datetime.now()
-                goodmatches_index = self._return_goodmatches_(query_index=query_index)
-                n_deduplicated = self._update_idcol_(goodmatches_index, query_index)
-                end = pd.datetime.now()
-                duration = (end - start).total_seconds()
-                print('record', query_index, 'countdown', countdown, 'of', nmax, 'n_deduplicated', n_deduplicated,
-                      'duration', duration)
+                print('countdown', countdown+1, 'of', nmax,':')
+                self._deduplicate_row_(query_index)
+
         print('deduplication finished at ', pd.datetime.now())
 
         return None
@@ -285,6 +288,15 @@ class Suricate:
             a = np.random.choice(possiblechoices)
             del x, possiblechoices
             return a
+
+    def _deduplicate_row_(self,query_index):
+        start = pd.datetime.now()
+        goodmatches_index = self._return_goodmatches_(query_index=query_index)
+        n_deduplicated = self._update_idcol_(goodmatches_index, query_index)
+        end = pd.datetime.now()
+        duration = (end - start).total_seconds()
+        print('record', query_index, 'n_deduplicated', n_deduplicated, 'duration', duration)
+        return None
 
     def _return_goodmatches_(self,query_index):
         predictions=self._return_predictions_(query_index)
@@ -499,6 +511,25 @@ class Suricate:
 
         return x
 
+    def extract_possible_pair(self,query_index,on_col='systemid',on_value='P11'):
+        if self.df.loc[query_index,self.idcol]==0:
+            self._deduplicate_row_(query_index)
+        groupid=self.df.loc[query_index,self.idcol]
+        filtered_index=self.df.loc[self.df[self.idcol]==groupid].index
+        if len(filtered_index)>1:
+            a= self.df.loc[filtered_index]
+            a=a.loc[a[on_col]==on_value]
+            if a.shape[0]>0:
+                filtered_index=a.index
+                tablescore=self.step_two_score(filtered_index)
+                predictions=self.step_three_predict(tablescore)
+                return predictions.sort_values(ascending=False).index[0]
+            else:
+                return None
+        else:
+            return None
+
+
 
 companystopwords_list = ['aerospace',
                          'ag',
@@ -571,6 +602,7 @@ def standard_application(df,
     return sur
 
 def load_model(training_filename=_training_table_filename_):
+    #TO DO add here a routine to print out time fitting the model
     training_set = pd.read_csv(training_filename, sep='|', encoding='utf-8')
     from sklearn.ensemble import RandomForestClassifier
     mymodel = RandomForestClassifier(n_estimators=2000)
