@@ -586,7 +586,7 @@ class Suricate:
         else:
             return None
 
-    def build_training_table_from_row(self, query_index,drop_undecided=True):
+    def build_training_table_from_row(self, query_index, drop_undecided=True):
         '''
         Returns a labelled dataframe for a row which has been verified
         The problem is the transitivity of the relations a ~ b and b ~ c but (a priori a !~ c)
@@ -616,12 +616,12 @@ class Suricate:
             z = z.loc[z]
             labelled_results.drop(z.index, inplace=True)
 
-        tablescore=tablescore.loc[labelled_results.index]
-        tablescore['ismatch']=labelled_results
+        tablescore = tablescore.loc[labelled_results.index]
+        tablescore['ismatch'] = labelled_results
 
         return tablescore
 
-    def build_training_table_from_list(self,in_index,drop_undecided=True):
+    def build_training_table_from_list(self, in_index, drop_undecided=True):
         '''
         return a training table to append
         Args:
@@ -631,15 +631,14 @@ class Suricate:
         Returns:
             pd.DataFrame, columns=self.traincols + 'ismatch'
         '''
-        newdata=pd.DataFrame()
+        newdata = pd.DataFrame()
         for ix in in_index:
-            tablerow=self.build_training_table_from_row(ix,drop_undecided=drop_undecided)
-            if newdata.shape[0]==0:
-                newdata=tablerow
+            tablerow = self.build_training_table_from_row(ix, drop_undecided=drop_undecided)
+            if newdata.shape[0] == 0:
+                newdata = tablerow
             else:
-                newdata=pd.concat([newdata,tablerow],axis=0,ignore_index=True)
+                newdata = pd.concat([newdata, tablerow], axis=0, ignore_index=True)
         return newdata
-
 
 
 companystopwords_list = ['aerospace',
