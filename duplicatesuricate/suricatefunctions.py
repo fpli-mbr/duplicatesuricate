@@ -1,9 +1,10 @@
 
 # coding: utf-8
-import numpy as np
-import pandas as pd
 #library needed: geopy for the latlng distance calculations
 ## Various comparison functions using fuzzywuzzy package (python levehstein)
+
+import numpy as np
+import pandas as pd
 
 #%%
 def exactmatch(a,b):
