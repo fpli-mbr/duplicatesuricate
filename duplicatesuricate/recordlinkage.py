@@ -2,12 +2,12 @@
 """
 Machine Learning model used for record linkage
 """
-training_filename = 'filename.csv'
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
 from duplicatesuricate import scoringfunctions
 
+training_filename = 'filename.csv'
 
 class RecordLinker:
     def __init__(self, verbose=True):
@@ -17,11 +17,22 @@ class RecordLinker:
         self.df = pd.DataFrame()
         self.query = pd.Series()
         self.traincols = []
+
         # scoring threshold for fuzzy score filtering
         self.filter_threshold = 0.8
         # scoring threshold using model predict_proba
         self.decision_threshold = 0.6
 
+        self.id_cols = ['dunsnumber', 'taxid', 'registerid']
+        self.loc_col = ['country']
+        self.fuzzy_filter_cols = ['streetaddress', 'companyname']
+        self.feature_cols = []
+        self.fuzzy_feature_cols = ['companyname', 'companyname_wostopwords', 'companyname_acronym',
+                              'streetaddress', 'streetaddress_wostopwords', 'cityname', 'postalcode']
+        self.tokens_feature_cols = ['companyname_wostopwords', 'streetaddress_wostopwords']
+        self.exact_feature_cols = ['country', 'state', 'dunsnumber', 'postalcode_1stdigit', 'postalcode_2digits', 'taxid',
+                              'registerid']
+        self.acronym_col = 'companyname'
         pass
 
     def train(self, warmstart=False, training_set=pd.DataFrame(), target_col='ismatch'):
@@ -37,6 +48,8 @@ class RecordLinker:
 
         """
         start = pd.datetime.now()
+        X_train = pd.DataFrame()
+        y_train = pd.Series()
 
         if warmstart is True:
             if training_set.shape[0] == 0:
@@ -129,13 +142,24 @@ class RecordLinker:
         self.df = target_records
         self.query = query.copy()
 
-        filtered_index = self.pre_filter_records()
+        filtered_index= self.pre_filter_records()
 
         table_score = self.create_similarity_features(filtered_index)
 
-        predictions = self.step_three_predict(table_score)
+        # check column length are adequate
+        if len(self.traincols) != len(table_score.columns):
+            additional_columns = list(filter(lambda x: x not in self.traincols, table_score.columns))
+            if len(additional_columns) > 0:
+                print('unknown columns in traincols', additional_columns)
+            missing_columns = list(filter(lambda x: x not in table_score.columns, self.traincols))
+            if len(missing_columns) > 0:
+                print('columns not found in scoring vector', missing_columns)
+        # check column order
+        table_score = table_score[self.traincols]
 
-        return predictions
+        y_proba = pd.DataFrame(self.model.predict_proba(table_score), index=table_score.index)[1]
+
+        return y_proba
 
     def pre_filter_records(self):
         """
@@ -144,11 +168,15 @@ class RecordLinker:
         Args:
 
         Returns:
-            bool: The True if it is a match False otherwise
+            pd.Index: the index of the potential matches in the target records table
         """
-        filtered_score = self.df['Index'].apply(lambda r: scoringfunctions.parallel_filter(self, r))
+        filtered_score = scoringfunctions.filter(df=self.df,
+                                                 query=self.query,
+                                                 id_cols=self.id_cols,
+                                                 loc_col=self.loc_col,
+                                                 fuzzy_filter_cols=self.fuzzy_filter_cols)
 
-        return filtered_score.loc[filtered_score > self.filter_threshold].index
+        return filtered_score.loc[filtered_score > self.filter_threshold]
 
     def create_similarity_features(self, filtered_index):
         """
@@ -159,32 +187,13 @@ class RecordLinker:
         Returns:
             pd.DataFrame, table of scores, where each column is a score (should be the same as self.traincols).
         """
-        table_score = self.df.loc[filtered_index, 'Index'].apply(
-            lambda r: scoringfunctions.parallel_calculate_comparison_score(self, r))
+        table_score = scoringfunctions.build_similarity_table(df=self.df.loc[filtered_index],
+                                                              query=self.query,
+                                                              feature_cols=self.feature_cols,
+                                                              fuzzy_feature_cols=self.fuzzy_feature_cols,
+                                                              tokens_feature_cols=self.tokens_feature_cols,
+                                                              exact_feature_cols=self.exact_feature_cols,
+                                                              acronym_col=self.acronym_col,
+                                                              traincols=self.traincols
+                                                              )
         return table_score
-
-    def calculate_probability(self, table_score):
-        """
-        from a scoring table, apply the model and return the probability of being a match
-        Args:
-            table_score (pd.DataFrame): scoring table
-
-        Returns:
-            pd.Series of being a match
-        
-        Careful that column names, length and order is the same as the training table
-        """
-        # check column length are adequate
-        if len(self.traincols) != len(table_score.columns):
-            additional_columns = list(filter(lambda x: x not in self.traincols, table_score.columns))
-            if len(additional_columns) > 0:
-                print('unknown columns in traincols', additional_columns)
-            missing_columns = list(filter(lambda x: x not in table_score.columns, self.traincols))
-            if len(missingcolumns) > 0:
-                print('columns not found in scoring vector', missing_columns)
-        # check column order
-        table_score = table_score[self.traincols]
-
-        y_proba = pd.DataFrame(self.model.predict_proba(table_score), index=table_score.index)[1]
-
-        return y_proba
