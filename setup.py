@@ -1,12 +1,23 @@
 from distutils.core import setup
 
-setup(
-    name='duplicatesuricate',
-    version='0.1',
-    packages=['duplicatesuricate'],
-    url='',
-    license='',
-    author='paulogier',
-    author_email='',
-    description=''
-)
+from setuptools import setup
+
+setup(name='duplicatesuricate',
+      version ='0.1',
+      description='Entity resolution algorithm inmplemented with scikit-learn',
+      author='Amber Ocelot',
+      author_email='AmberOcelot@gmail.com',
+      license='na',
+      packages=['neatmartinet','sklearn','pandas','numpy','fuzzywuzzy'],
+      zip_safe=False,
+      url='https://github.com/ogierpaul/duplicatesuricate',
+      download_url='https://github.com/ogierpaul/duplicatesuricate.git',
+      keywords=['pandas', 'data cleaning',
+      'entity matching','entity resolution','record linkage'],
+      classifiers=[
+          'Programming Language :: Python :: 3',
+          'Topic :: Scientific/Engineering :: Mathematics',
+          'Intended Audience :: Developers',
+          'Topic :: Utilities'
+      ]
+      )
