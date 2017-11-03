@@ -7,7 +7,7 @@ training_filename = _training_path+_training_name
 
 # Column names
 id_cols = ['dunsnumber', 'taxid', 'registerid']
-loc_col = ['country']
+loc_col = 'country'
 fuzzy_filter_cols = ['streetaddress', 'companyname']
 feature_cols = []
 fuzzy_feature_cols = ['companyname',

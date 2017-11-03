@@ -20,7 +20,7 @@ class RecordLinker:
                  exact_feature_cols=config.exact_feature_cols,
                  acronym_col=config.acronym_col):
         self.verbose = verbose
-        self.model = RandomForestClassifier(n_estimators=2000)
+        self.model = RandomForestClassifier(n_estimators=100)
 
         self.df = df
         self.query = pd.Series()
@@ -70,7 +70,7 @@ class RecordLinker:
 
         else:
             if training_set.shape[0] == 0:
-                training_set = pd.read_csv(config.training_filename, encoding='utf-8', sep=',')
+                training_set = pd.read_csv(config.training_filename, encoding='utf-8', sep=',',nrows=1000)
 
             if target_col not in training_set.columns:
                 raise KeyError('target column ', target_col, ' not found in training set columns')
@@ -114,7 +114,10 @@ class RecordLinker:
 
         """
         y_bool = self.predict(target_records, query)
-        return y_bool.loc[y_bool].index
+        if y_bool is None:
+            return None
+        else:
+            return y_bool.loc[y_bool].index
 
     def predict(self, target_records, query):
         """
@@ -129,11 +132,12 @@ class RecordLinker:
         """
         # calculate the probability of the records being the same as the query through the machine learning model
         y_proba = self.predict_proba(target_records, query)
-
-        # transform that probability in a boolean via a decision threshold
-        y_bool = (y_proba > self.decision_threshold)
-
-        return y_bool
+        if y_proba is None:
+            return None
+        else:
+            # transform that probability in a boolean via a decision threshold
+            y_bool = (y_proba > self.decision_threshold)
+            return y_bool
 
     def predict_proba(self, target_records, query):
         """
@@ -150,23 +154,25 @@ class RecordLinker:
         self.query = query.copy()
 
         filtered_index = self.pre_filter_records()
+        if len(filtered_index) == 0:
+            return None
+        else:
+            table_score = self.create_similarity_features(filtered_index)
 
-        table_score = self.create_similarity_features(filtered_index)
+            # check column length are adequate
+            if len(self.traincols) != len(table_score.columns):
+                additional_columns = list(filter(lambda x: x not in self.traincols, table_score.columns))
+                if len(additional_columns) > 0:
+                    print('unknown columns in traincols', additional_columns)
+                missing_columns = list(filter(lambda x: x not in table_score.columns, self.traincols))
+                if len(missing_columns) > 0:
+                    print('columns not found in scoring vector', missing_columns)
+            # check column order
+            table_score = table_score[self.traincols]
 
-        # check column length are adequate
-        if len(self.traincols) != len(table_score.columns):
-            additional_columns = list(filter(lambda x: x not in self.traincols, table_score.columns))
-            if len(additional_columns) > 0:
-                print('unknown columns in traincols', additional_columns)
-            missing_columns = list(filter(lambda x: x not in table_score.columns, self.traincols))
-            if len(missing_columns) > 0:
-                print('columns not found in scoring vector', missing_columns)
-        # check column order
-        table_score = table_score[self.traincols]
+            y_proba = pd.DataFrame(self.model.predict_proba(table_score), index=table_score.index)[1]
 
-        y_proba = pd.DataFrame(self.model.predict_proba(table_score), index=table_score.index)[1]
-
-        return y_proba
+            return y_proba
 
     def pre_filter_records(self):
         """
@@ -183,7 +189,7 @@ class RecordLinker:
                                                     loc_col=self.loc_col,
                                                     fuzzy_filter_cols=self.fuzzy_filter_cols)
 
-        return filtered_score.loc[filtered_score > self.filter_threshold]
+        return filtered_score.loc[filtered_score > self.filter_threshold].index
 
     def create_similarity_features(self, filtered_index):
         """

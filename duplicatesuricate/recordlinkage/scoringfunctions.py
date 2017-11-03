@@ -33,7 +33,7 @@ def vector_to_vector_filter(row, query, id_cols, loc_col, fuzzy_filter_cols):
         row (pd.Series): attributes of the record
         query (pd.Series): attributes of the query
         id_cols (list): names of the columns which contain an id
-        loc_col (list): names of the column of the location (often, country)
+        loc_col (str): name of the column of the location (often, country)
         fuzzy_filter_cols (list): names of the columns we want to filter_df on name
 
     Returns:
@@ -109,7 +109,9 @@ def build_similarity_table(df,
                                                                    tokens_feature_cols=tokens_feature_cols,
                                                                    exact_feature_cols=exact_feature_cols,
                                                                    acronym_col=acronym_col,
-                                                                   traincols=traincols))
+                                                                   traincols=traincols),
+                           axis=1)
+    table_score=table_score.fillna(-1)
     return table_score
 
 
@@ -171,10 +173,9 @@ def vector_to_vector_similarity(row,
         else:
             calculated_features[c] = None
 
-    # fill na values
-    calculated_features = calculated_features.fillna(-1)
-
     # re-arrange order columns
     calculated_features = calculated_features[traincols]
+
+    calculated_features.fillna(-1, inplace=True)
 
     return calculated_features

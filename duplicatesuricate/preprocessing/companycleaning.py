@@ -21,7 +21,7 @@ def clean_db(df):
         raise ('Error: index is not unique')
 
     # check if columns is in the existing database, other create a null one
-    for c in [config.idcol, config.queryidcol, 'latlng', 'state']:
+    for c in [config.idcol, config.queryidcol]:
         if c not in df.columns:
             df[c] = None
 
@@ -109,4 +109,4 @@ def clean_db(df):
     #     lambda r: 0 if pd.isnull(r) else any(w in r for w in config.airbus_names)).astype(
     #     int)
 
-    return None
+    return df
