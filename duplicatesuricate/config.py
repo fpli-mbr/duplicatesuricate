@@ -9,15 +9,13 @@ training_filename = _training_path+_training_name
 id_cols = ['dunsnumber', 'taxid', 'registerid']
 loc_col = ['country']
 fuzzy_filter_cols = ['streetaddress', 'companyname']
-feature_cols = ['companyname_wostopwords_wordfrequency',
-                     'companyname_len', 'companyname_wostopwords_len', 'streetaddress_len',
-                     'companyname_wostopwords_ntokens', 'cityfrequency', 'isbigcity', 'has_airbusequiv']
-fuzzy_feature_cols = ['companyname', 'companyname_wostopwords', 'companyname_acronym',
-                           'streetaddress', 'streetaddress_wostopwords', 'cityname', 'postalcode']
-tokens_feature_cols = ['companyname_wostopwords', 'streetaddress_wostopwords']
-exact_feature_cols = ['country', 'state', 'dunsnumber', 'postalcode_1stdigit', 'postalcode_2digits', 'taxid',
+feature_cols = []
+fuzzy_feature_cols = ['companyname',
+                           'streetaddress',  'cityname', 'postalcode']
+tokens_feature_cols = []
+exact_feature_cols = ['country', 'dunsnumber', 'taxid',
                            'registerid']
-acronym_col = 'companyname'
+acronym_col = ''
 
 #
 idcol = 'groupid'
@@ -84,3 +82,17 @@ bigcities = ['munich',
              'ulm',
              'stuttgart', 'blagnac']
 airbus_names = ['airbus', 'casa', 'eads', 'cassidian', 'astrium', 'eurocopter']
+
+# Column names
+# id_cols = ['dunsnumber', 'taxid', 'registerid']
+# loc_col = ['country']
+# fuzzy_filter_cols = ['streetaddress', 'companyname']
+# feature_cols = ['companyname_wostopwords_wordfrequency',
+#                      'companyname_len', 'companyname_wostopwords_len', 'streetaddress_len',
+#                      'companyname_wostopwords_ntokens', 'cityfrequency', 'isbigcity', 'has_airbusequiv']
+# fuzzy_feature_cols = ['companyname', 'companyname_wostopwords', 'companyname_acronym',
+#                            'streetaddress', 'streetaddress_wostopwords', 'cityname', 'postalcode']
+# tokens_feature_cols = ['companyname_wostopwords', 'streetaddress_wostopwords']
+# exact_feature_cols = ['country', 'state', 'dunsnumber', 'postalcode_1stdigit', 'postalcode_2digits', 'taxid',
+#                            'registerid']
+# acronym_col = 'companyname'

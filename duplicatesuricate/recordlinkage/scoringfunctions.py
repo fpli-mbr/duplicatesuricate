@@ -165,10 +165,11 @@ def vector_to_vector_similarity(row,
             calculated_features[c] = None
 
     c = acronym_col
-    if c in comparable_attributes:
-        calculated_features[c + '_acronym_fuzzyscore'] = cfunc.compare_acronyme(row[c], query[c])
-    else:
-        calculated_features[c] = None
+    if c!= '':
+        if c in comparable_attributes:
+            calculated_features[c + '_acronym_fuzzyscore'] = cfunc.compare_acronyme(row[c], query[c])
+        else:
+            calculated_features[c] = None
 
     # fill na values
     calculated_features = calculated_features.fillna(-1)

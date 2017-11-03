@@ -59,54 +59,54 @@ def clean_db(df):
             df[c] = None
 
     # remove stopwords from company names
-    df['companyname_wostopwords'] = df['companyname'].apply(
-        lambda r: nm.rmv_stopwords(r, stopwords=companystopwords))
+    # df['companyname_wostopwords'] = df['companyname'].apply(
+    #     lambda r: nm.rmv_stopwords(r, stopwords=companystopwords))
 
     # create acronyms of company names
-    df['companyname_acronym'] = df['companyname'].apply(nm.acronym)
+    # df['companyname_acronym'] = df['companyname'].apply(nm.acronym)
 
     # remove stopwords from street addresses
-    df['streetaddress_wostopwords'] = df['streetaddress'].apply(
-        lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords, endingwords=endingwords))
+    # df['streetaddress_wostopwords'] = df['streetaddress'].apply(
+    #     lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords, endingwords=endingwords))
 
     # Calculate word use frequency in company names
-    df['companyname_wostopwords_wordfrequency'] = nm.calculate_token_frequency(
-        df['companyname_wostopwords'])
+    # df['companyname_wostopwords_wordfrequency'] = nm.calculate_token_frequency(
+    #     df['companyname_wostopwords'])
 
     # Take the first digits and the first two digits of the postal code
-    df['postalcode_1stdigit'] = df['postalcode'].apply(
-        lambda r: np.nan if pd.isnull(r) else str(r)[:1]
-    )
-    df['postalcode_2digits'] = df['postalcode'].apply(
-        lambda r: np.nan if pd.isnull(r) else str(r)[:2]
-    )
-
-    # Calculate length of strings
-    for c in ['companyname', 'companyname_wostopwords', 'streetaddress']:
-        mycol = c + '_len'
-        df[mycol] = df[c].apply(lambda r: None if pd.isnull(r) else len(r))
-        max_length = df[mycol].max()
-        df.loc[df[mycol].isnull() == False, mycol] = df.loc[df[
-                                                                mycol].isnull() == False, mycol] / max_length
-
-    # Calculate number of tokens in string
-    for c in ['companyname_wostopwords']:
-        mycol = c + '_ntokens'
-        df[mycol] = df[c].apply(lambda r: None if pd.isnull(r) else len(r.split(' ')))
-        max_value = df[mycol].max()
-        df.loc[df[mycol].isnull() == False, mycol] = df.loc[df[
-                                                                mycol].isnull() == False, mycol] / max_value
-
-    # Calculate frequency of city used
-    df['cityfrequency'] = nm.calculate_cat_frequency(df['cityname'])
-
-    # Define the list of big cities
-    df['isbigcity'] = df['cityname'].isin(config.bigcities).astype(int)
-
-    # Define the list of airbus names and equivalents
-
-    df['has_airbusequiv'] = df['companyname_wostopwords'].apply(
-        lambda r: 0 if pd.isnull(r) else any(w in r for w in config.airbus_names)).astype(
-        int)
+    # df['postalcode_1stdigit'] = df['postalcode'].apply(
+    #     lambda r: np.nan if pd.isnull(r) else str(r)[:1]
+    # )
+    # df['postalcode_2digits'] = df['postalcode'].apply(
+    #     lambda r: np.nan if pd.isnull(r) else str(r)[:2]
+    # )
+    #
+    # # Calculate length of strings
+    # for c in ['companyname', 'companyname_wostopwords', 'streetaddress']:
+    #     mycol = c + '_len'
+    #     df[mycol] = df[c].apply(lambda r: None if pd.isnull(r) else len(r))
+    #     max_length = df[mycol].max()
+    #     df.loc[df[mycol].isnull() == False, mycol] = df.loc[df[
+    #                                                             mycol].isnull() == False, mycol] / max_length
+    #
+    # # Calculate number of tokens in string
+    # for c in ['companyname_wostopwords']:
+    #     mycol = c + '_ntokens'
+    #     df[mycol] = df[c].apply(lambda r: None if pd.isnull(r) else len(r.split(' ')))
+    #     max_value = df[mycol].max()
+    #     df.loc[df[mycol].isnull() == False, mycol] = df.loc[df[
+    #                                                             mycol].isnull() == False, mycol] / max_value
+    #
+    # # Calculate frequency of city used
+    # df['cityfrequency'] = nm.calculate_cat_frequency(df['cityname'])
+    #
+    # # Define the list of big cities
+    # df['isbigcity'] = df['cityname'].isin(config.bigcities).astype(int)
+    #
+    # # Define the list of airbus names and equivalents
+    #
+    # df['has_airbusequiv'] = df['companyname_wostopwords'].apply(
+    #     lambda r: 0 if pd.isnull(r) else any(w in r for w in config.airbus_names)).astype(
+    #     int)
 
     return None
