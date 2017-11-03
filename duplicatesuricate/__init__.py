@@ -1,1 +1,1 @@
-from .suricate import *
+from .recordlinkage import recordlinkage

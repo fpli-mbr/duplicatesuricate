@@ -5,16 +5,24 @@ Machine Learning model used for record linkage
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
-from duplicatesuricate import scoringfunctions
 
-training_filename = 'filename.csv'
+from duplicatesuricate.recordlinkage import scoringfunctions
+from duplicatesuricate import config
+
 
 class RecordLinker:
-    def __init__(self, verbose=True):
+    def __init__(self, verbose=True,
+                 df=pd.DataFrame(),
+                 id_cols=config.id_cols, loc_col=config.loc_col, fuzzy_filter_cols=config.fuzzy_filter_cols,
+                 feature_cols=config.feature_cols,
+                 fuzzy_feature_cols=config.fuzzy_feature_cols,
+                 tokens_feature_cols=config.tokens_feature_cols,
+                 exact_feature_cols=config.exact_feature_cols,
+                 acronym_col=config.acronym_col):
         self.verbose = verbose
         self.model = RandomForestClassifier(n_estimators=2000)
 
-        self.df = pd.DataFrame()
+        self.df = df
         self.query = pd.Series()
         self.traincols = []
 
@@ -23,16 +31,15 @@ class RecordLinker:
         # scoring threshold using model predict_proba
         self.decision_threshold = 0.6
 
-        self.id_cols = ['dunsnumber', 'taxid', 'registerid']
-        self.loc_col = ['country']
-        self.fuzzy_filter_cols = ['streetaddress', 'companyname']
-        self.feature_cols = []
-        self.fuzzy_feature_cols = ['companyname', 'companyname_wostopwords', 'companyname_acronym',
-                              'streetaddress', 'streetaddress_wostopwords', 'cityname', 'postalcode']
-        self.tokens_feature_cols = ['companyname_wostopwords', 'streetaddress_wostopwords']
-        self.exact_feature_cols = ['country', 'state', 'dunsnumber', 'postalcode_1stdigit', 'postalcode_2digits', 'taxid',
-                              'registerid']
-        self.acronym_col = 'companyname'
+        # name and list of column names to be used
+        self.id_cols = id_cols
+        self.loc_col = loc_col
+        self.fuzzy_filter_cols = fuzzy_filter_cols
+        self.feature_cols = feature_cols
+        self.fuzzy_feature_cols = fuzzy_feature_cols
+        self.tokens_feature_cols = tokens_feature_cols
+        self.exact_feature_cols = exact_feature_cols
+        self.acronym_col = acronym_col
         pass
 
     def train(self, warmstart=False, training_set=pd.DataFrame(), target_col='ismatch'):
@@ -53,7 +60,7 @@ class RecordLinker:
 
         if warmstart is True:
             if training_set.shape[0] == 0:
-                training_set = pd.read_csv(training_filename, nrows=1)
+                training_set = pd.read_csv(config.training_filename, nrows=1, encoding='utf-8', sep=',')
 
             if target_col not in training_set.columns:
                 raise KeyError('target column ', target_col, ' not found in training set columns')
@@ -63,7 +70,7 @@ class RecordLinker:
 
         else:
             if training_set.shape[0] == 0:
-                training_set = pd.read_csv(training_filename)
+                training_set = pd.read_csv(config.training_filename, encoding='utf-8', sep=',')
 
             if target_col not in training_set.columns:
                 raise KeyError('target column ', target_col, ' not found in training set columns')
@@ -142,7 +149,7 @@ class RecordLinker:
         self.df = target_records
         self.query = query.copy()
 
-        filtered_index= self.pre_filter_records()
+        filtered_index = self.pre_filter_records()
 
         table_score = self.create_similarity_features(filtered_index)
 
@@ -170,11 +177,11 @@ class RecordLinker:
         Returns:
             pd.Index: the index of the potential matches in the target records table
         """
-        filtered_score = scoringfunctions.filter(df=self.df,
-                                                 query=self.query,
-                                                 id_cols=self.id_cols,
-                                                 loc_col=self.loc_col,
-                                                 fuzzy_filter_cols=self.fuzzy_filter_cols)
+        filtered_score = scoringfunctions.filter_df(df=self.df,
+                                                    query=self.query,
+                                                    id_cols=self.id_cols,
+                                                    loc_col=self.loc_col,
+                                                    fuzzy_filter_cols=self.fuzzy_filter_cols)
 
         return filtered_score.loc[filtered_score > self.filter_threshold]
 
