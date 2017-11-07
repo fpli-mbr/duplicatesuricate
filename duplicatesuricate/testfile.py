@@ -14,14 +14,15 @@ suricate.clean_records()
 
 # %%
 from duplicatesuricate.recordlinkage import RecordLinker
-irl = RecordLinker()
+irl = RecordLinker(n_estimators=1000)
 irl.train()
-suricate.add_model(model=irl)
+
+#suricate.add_model(model=irl)
 
 # %%
-# hp_ix=130070
+# hp_ix=130r070
 # hp_q=suricate.input_records.loc[hp_ix]
 # results=irl.return_good_matches(query=hp_q,target_records=suricate.target_records)
 # print(suricate.target_records.loc[results])
 
-results=suricate.link_input_to_target()
+#results=suricate.link_input_to_target()

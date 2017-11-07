@@ -18,9 +18,10 @@ class RecordLinker:
                  fuzzy_feature_cols=config.fuzzy_feature_cols,
                  tokens_feature_cols=config.tokens_feature_cols,
                  exact_feature_cols=config.exact_feature_cols,
-                 acronym_col=config.acronym_col):
+                 acronym_col=config.acronym_col,
+                 n_estimators=2000):
         self.verbose = verbose
-        self.model = RandomForestClassifier(n_estimators=100)
+        self.model = RandomForestClassifier(n_estimators=n_estimators)
 
         self.df = df
         self.query = pd.Series()
@@ -70,7 +71,7 @@ class RecordLinker:
 
         else:
             if training_set.shape[0] == 0:
-                training_set = pd.read_csv(config.training_filename, encoding='utf-8', sep=',',nrows=1000)
+                training_set = pd.read_csv(config.training_filename, encoding='utf-8', sep=',')
 
             if target_col not in training_set.columns:
                 raise KeyError('target column ', target_col, ' not found in training set columns')
@@ -79,8 +80,15 @@ class RecordLinker:
                 print('shape of training table ', training_set.shape)
                 print('number of positives in table', training_set[target_col].sum())
 
+            # Check that the training columns
+            traincols = list(filter(lambda x: x != target_col, training_set.columns))
+
+            if all(map(lambda x:x in traincols, config.similarity_cols)) is False:
+                raise KeyError('output of scoring function and training columns do not match, check config file or Training file')
+
+            self.traincols = config.similarity_cols
+
             # Define training set and target vector
-            self.traincols = list(filter(lambda x: x != target_col, training_set.columns))
             X_train = training_set[self.traincols].fillna(-1)  # fill na values
             y_train = training_set[target_col]
 

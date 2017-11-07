@@ -36,6 +36,7 @@ class Launcher:
         Returns:
             None
         """
+
         if source:
             self.input_records = cleanfunc(self.input_records)
         if target:
@@ -120,4 +121,3 @@ class Launcher:
                 s = pd.Series(data=goodmatches_index, index=range(len(goodmatches_index)), name=ix)
                 results=results.append(s)
         return results
-

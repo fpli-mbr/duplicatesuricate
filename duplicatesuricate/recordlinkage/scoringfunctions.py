@@ -144,9 +144,9 @@ def vector_to_vector_similarity(row,
 
     for c in feature_cols:
         # fill the table with the features specific to each row
-        calculated_features[c + '_feat_row'] = row[c]
+        calculated_features[c + '_row'] = row[c]
         # fill the table with the features of the query
-        calculated_features[c + '_feat_query'] = query[c]
+        calculated_features[c + '_query'] = query[c]
 
     for c in fuzzy_feature_cols:
         if c in comparable_attributes:
