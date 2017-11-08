@@ -83,8 +83,9 @@ class RecordLinker:
             # Check that the training columns
             traincols = list(filter(lambda x: x != target_col, training_set.columns))
 
-            if all(map(lambda x:x in traincols, config.similarity_cols)) is False:
-                raise KeyError('output of scoring function and training columns do not match, check config file or Training file')
+            if all(map(lambda x: x in traincols, config.similarity_cols)) is False:
+                raise KeyError(
+                    'output of scoring function and training columns do not match, check config file or Training file')
 
             self.traincols = config.similarity_cols
 
@@ -123,11 +124,11 @@ class RecordLinker:
         """
         y_bool = self.predict(target_records, query)
         if y_bool is None:
-            print('len(goodmatches)',0)
+            print('len(goodmatches)', 0)
             return None
         else:
-            goodmatches= y_bool.loc[y_bool].index
-            print('len(goodmatches)',len(goodmatches))
+            goodmatches = y_bool.loc[y_bool].index
+            print('len(goodmatches)', len(goodmatches))
             return goodmatches
 
     def predict(self, target_records, query):
@@ -165,67 +166,88 @@ class RecordLinker:
         self.query = query.copy()
         start = pd.datetime.now()
 
-        filtered_index = self.pre_filter_records()
+        # pre filter the records for further scoring: 0 if not possible choice, 0.5 if possible choice, 1 if sure choice
+        y_pre_filter = self.pre_filter_records()
+        y_pre_filter = y_pre_filter.loc[y_pre_filter > 0]
+        ix_pre_filter = y_pre_filter.index
 
         end = pd.datetime.now()
-        print('time filtering',(end-start).total_seconds(),'len(filtered_index)',len(filtered_index))
-        end = start
+        print('time pre-filtering', (end - start).total_seconds(), 'len(pre_filtering)', len(ix_pre_filter))
+        start = end
 
-        if len(filtered_index) == 0:
+        if len(ix_pre_filter) == 0:
             return None
         else:
-            table_score1 = self.create_similarity_features(filtered_index,query=self.query,
-                                                          feature_cols=[],fuzzy_feature_cols=self.fuzzy_filter_cols)
-            filter_proba = table_score1.max(axis=1)
-            filtered_index_2 = filter_proba.loc[filter_proba>self.filter_threshold].index
-            table_score1=table_score1.loc[filtered_index_2]
+            # do further scoring on the possible choices and the sure choices
+            table_score_filter = self.create_similarity_features(filtered_index=ix_pre_filter, query=self.query,
+                                                                 feature_cols=[],
+                                                                 fuzzy_feature_cols=self.fuzzy_filter_cols)
+            # add the y_pre_filter vector to make sure we select the sure choices (ids, ...) where the value is 1
+            table_score_filter['y_pre_filter'] = y_pre_filter
+
+            # this gives us a score: 1 if choice, max(fuzzy_score for filtered columns) for possible choices
+            y_filter_score = table_score_filter.max(axis=1)
+
+            # we then filter on that score with a pre-defined threshold
+            ix_filter = y_filter_score.loc[y_filter_score > self.filter_threshold].index
+            table_score_filter = table_score_filter.loc[ix_filter]
+
+            # we remove the filter_score
+            table_score_filter.drop(labels=['y_pre_filter'], axis=1, inplace=True)
 
             end = pd.datetime.now()
-            print('time scoring1', (end - start).total_seconds(), 'len(filtered_index2)',len(filtered_index_2))
-            end = start
-            if table_score1.shape[0]== 0:
+            print('time filtering', (end - start).total_seconds(), 'len(ix_filter)', len(ix_filter))
+            start = end
+
+            if table_score_filter.shape[0] == 0:
                 return None
+            else:
+                # we perform further analysis on the filtered index:
+                # we complete the fuzzy score with additional columns
+                additional_fuzzy_cols = [c for c in self.fuzzy_feature_cols if not c in self.fuzzy_filter_cols]
 
+                # we also include the exact matching, the features, the tokens matching
+                table_score_additional = self.create_similarity_features(ix_filter, query=self.query,
+                                                                         feature_cols=self.feature_cols,
+                                                                         fuzzy_feature_cols=additional_fuzzy_cols,
+                                                                         tokens_feature_cols=self.tokens_feature_cols,
+                                                                         acronym_col=self.acronym_col,
+                                                                         exact_feature_cols=self.exact_feature_cols)
 
-            newfuzzycols=[c for c in self.fuzzy_feature_cols if not c in self.fuzzy_filter_cols]
+                # we join the two tables to have a complete view of the score
+                table_score_complete = table_score_filter.join(table_score_additional, how='left')
 
-            table_score2 = self.create_similarity_features(filtered_index_2,query=self.query,
-                                                          feature_cols=self.feature_cols,fuzzy_feature_cols=newfuzzycols,
-                                                           tokens_feature_cols=self.tokens_feature_cols,acronym_col=self.acronym_col,
-                                                           exact_feature_cols=self.exact_feature_cols)
-            table_score1.index.name = self.df.index.name
-            table_score2.index.name = self.df.index.name
+                end = pd.datetime.now()
+                print('time additional scoring', (end - start).total_seconds())
+                start = end
 
-            table_score=table_score1.join(table_score2,how='left')
+                # check column length are adequate
+                traincols = pd.Index(self.traincols)
+                traincols.name = 'training table'
+                scorecols = table_score_complete.columns
+                scorecols.name = 'scoring table'
+                if check_column_same(traincols, scorecols) is False:
+                    raise KeyError('training columns and scoring columns differ')
+                del traincols, scorecols
 
-            end = pd.datetime.now()
-            print('time scoring2', (end - start).total_seconds())
-            end = start
+                # re-arrange the column order
+                table_score_complete = table_score_complete[self.traincols]
 
-            # check column length are adequate
-            if len(self.traincols) != len(table_score.columns):
-                additional_columns = list(filter(lambda x: x not in self.traincols, table_score.columns))
-                if len(additional_columns) > 0:
-                    print('unknown columns in traincols', additional_columns)
-                missing_columns = list(filter(lambda x: x not in table_score.columns, self.traincols))
-                if len(missing_columns) > 0:
-                    print('columns not found in scoring vector', missing_columns)
+                # fill the na values
+                table_score_complete = table_score_complete.fillna(-1)
 
-            # check column order
-            table_score = table_score[self.traincols]
-            table_score=table_score.fillna(-1)
-            print('time checking', (end - start).total_seconds())
-            end = start
-            # launch prediction using the predict_proba of the sklearn module
-            y_proba = pd.DataFrame(self.model.predict_proba(table_score), index=table_score.index)[1].copy()
-            print('time predicting', (end - start).total_seconds())
-            end = start
-            del table_score
+                # launch prediction using the predict_proba of the scikit-learn module
+                y_proba = \
+                pd.DataFrame(self.model.predict_proba(table_score_complete), index=table_score_complete.index)[1].copy()
 
-            # sort the results
-            y_proba.sort_values(ascending=False,inplace=True)
+                end = pd.datetime.now()
+                print('time predicting', (end - start).total_seconds())
+                del table_score_complete
 
-            return y_proba
+                # sort the results
+                y_proba.sort_values(ascending=False, inplace=True)
+
+                return y_proba
 
     def pre_filter_records(self):
         """
@@ -234,17 +256,17 @@ class RecordLinker:
         Args:
 
         Returns:
-            pd.Index: the score of the potential matches in the target records table
+            pd.Series: the score of the potential matches in the target records table
         """
-        filtered_bool = scoringfunctions.filter_df(df=self.df,
+        filtered_float = scoringfunctions.filter_df(df=self.df,
                                                     query=self.query,
                                                     id_cols=self.id_cols,
                                                     loc_col=self.loc_col)
-        filtered_bool=filtered_bool.astype(bool)
-        return filtered_bool.loc[filtered_bool>self.filter_threshold].index
+        return filtered_float
 
-    def create_similarity_features(self, filtered_index, query,feature_cols=None,fuzzy_feature_cols=None,tokens_feature_cols=None,
-                                   exact_feature_cols=None,acronym_col=None):
+    def create_similarity_features(self, filtered_index, query, feature_cols=None, fuzzy_feature_cols=None,
+                                   tokens_feature_cols=None,
+                                   exact_feature_cols=None, acronym_col=None):
         """
         Return a comparison table for all indexes of the filtered_index (as input)
         Args:
@@ -263,3 +285,16 @@ class RecordLinker:
                                                               )
 
         return table_score
+
+
+def check_column_same(a, b):
+    if set(a) == set(b):
+        return True
+    else:
+        missing_a_columns = list(filter(lambda x: x not in a, b))
+        if len(missing_a_columns) > 0:
+            print('unknown columns from', b.name, 'not in', a.name, ':', missing_a_columns)
+        missing_b_columns = list(filter(lambda x: x not in b, a))
+        if len(missing_b_columns) > 0:
+            print('unknown columns from', a.name, 'not in', b.name, ':', missing_b_columns)
+        return False

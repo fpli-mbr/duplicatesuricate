@@ -15,24 +15,19 @@ def filter_df(df, query, id_cols, loc_col):
         loc_col (str): names of the column of the location (often, country)
 
     Returns:
-        pd.Series: boolean of being a potential match
+        pd.Series: float of being a potential match
     """
-    # filter_bool = df.apply(lambda row: vector_to_vector_filter(row,
-    #                                                             query,
-    #                                                             id_cols,
-    #                                                             loc_col), axis=1)
-    s=pd.Series(index=df.index).fillna(False)
+    s=pd.Series(index=df.index).fillna(0)
     if query.name in s.index:
-        s.loc[query.name]=True
+        s.loc[query.name]=1
 
     for c in id_cols:
         if pd.isnull(query[c]) is False:
-            s.loc[df[c]==query[c]] = True
+            s.loc[df[c]==query[c]] = 1
 
     if pd.isnull(query[loc_col]) is False:
-        s.loc[df[loc_col]==query[loc_col]] = True
+        s.loc[df[loc_col]==query[loc_col]] = 0.9
 
-    s=s.astype(bool)
     return s
 
 def vector_to_vector_filter(row, query, id_cols, loc_col):
@@ -43,7 +38,6 @@ def vector_to_vector_filter(row, query, id_cols, loc_col):
         query (pd.Series): attributes of the query
         id_cols (list): names of the columns which contain an id
         loc_col (str): name of the column of the location (often, country)
-        fuzzy_filter_cols (list): names of the columns we want to filter_df on name
 
     Returns:
         bool: probability of being a potential match
@@ -97,23 +91,11 @@ def build_similarity_table(df,
         tokens_feature_cols (list): token scoring cols
         exact_feature_cols (list): exact scoring cols
         acronym_col (str): acronym scoring col
-        traincols (list): ordered list of columns found in the training columns
 
     Returns:
         pd.DataFrame: 
 
     """
-
-    # table_score = df.apply(lambda row: vector_to_vector_similarity(
-    #                                                                 row=row,
-    #                                                                query=query,
-    #                                                                feature_cols=feature_cols,
-    #                                                                fuzzy_feature_cols=fuzzy_feature_cols,
-    #                                                                tokens_feature_cols=tokens_feature_cols,
-    #                                                                exact_feature_cols=exact_feature_cols,
-    #                                                                acronym_col=acronym_col),
-    #                        axis=1)
-
 
     table_score=pd.DataFrame(index=df.index)
     if feature_cols is not None:
