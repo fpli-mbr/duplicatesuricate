@@ -111,13 +111,12 @@ class Launcher:
         """
         if in_index is None:
             in_index = self.input_records.index
-        results = pd.DataFrame()
+        results = pd.DataFrame(columns=[0])
         for i, ix in enumerate(in_index):
             goodmatches_index = self._find_matches_(query_index=ix, n_matches_max=n_matches_max)
             if goodmatches_index is None:
                 results.loc[ix] = None
             else:
-
                 s = pd.Series(data=goodmatches_index, index=range(len(goodmatches_index)), name=ix)
                 results=results.append(s)
         return results

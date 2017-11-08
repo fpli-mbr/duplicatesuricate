@@ -123,9 +123,12 @@ class RecordLinker:
         """
         y_bool = self.predict(target_records, query)
         if y_bool is None:
+            print('len(goodmatches)',0)
             return None
         else:
-            return y_bool.loc[y_bool].index
+            goodmatches= y_bool.loc[y_bool].index
+            print('len(goodmatches)',len(goodmatches))
+            return goodmatches
 
     def predict(self, target_records, query):
         """
@@ -160,12 +163,44 @@ class RecordLinker:
         """
         self.df = target_records
         self.query = query.copy()
+        start = pd.datetime.now()
 
         filtered_index = self.pre_filter_records()
+
+        end = pd.datetime.now()
+        print('time filtering',(end-start).total_seconds(),'len(filtered_index)',len(filtered_index))
+        end = start
+
         if len(filtered_index) == 0:
             return None
         else:
-            table_score = self.create_similarity_features(filtered_index)
+            table_score1 = self.create_similarity_features(filtered_index,query=self.query,
+                                                          feature_cols=[],fuzzy_feature_cols=self.fuzzy_filter_cols)
+            filter_proba = table_score1.max(axis=1)
+            filtered_index_2 = filter_proba.loc[filter_proba>self.filter_threshold].index
+            table_score1=table_score1.loc[filtered_index_2]
+
+            end = pd.datetime.now()
+            print('time scoring1', (end - start).total_seconds(), 'len(filtered_index2)',len(filtered_index_2))
+            end = start
+            if table_score1.shape[0]== 0:
+                return None
+
+
+            newfuzzycols=[c for c in self.fuzzy_feature_cols if not c in self.fuzzy_filter_cols]
+
+            table_score2 = self.create_similarity_features(filtered_index_2,query=self.query,
+                                                          feature_cols=self.feature_cols,fuzzy_feature_cols=newfuzzycols,
+                                                           tokens_feature_cols=self.tokens_feature_cols,acronym_col=self.acronym_col,
+                                                           exact_feature_cols=self.exact_feature_cols)
+            table_score1.index.name = self.df.index.name
+            table_score2.index.name = self.df.index.name
+
+            table_score=table_score1.join(table_score2,how='left')
+
+            end = pd.datetime.now()
+            print('time scoring2', (end - start).total_seconds())
+            end = start
 
             # check column length are adequate
             if len(self.traincols) != len(table_score.columns):
@@ -175,10 +210,20 @@ class RecordLinker:
                 missing_columns = list(filter(lambda x: x not in table_score.columns, self.traincols))
                 if len(missing_columns) > 0:
                     print('columns not found in scoring vector', missing_columns)
+
             # check column order
             table_score = table_score[self.traincols]
+            table_score=table_score.fillna(-1)
+            print('time checking', (end - start).total_seconds())
+            end = start
+            # launch prediction using the predict_proba of the sklearn module
+            y_proba = pd.DataFrame(self.model.predict_proba(table_score), index=table_score.index)[1].copy()
+            print('time predicting', (end - start).total_seconds())
+            end = start
+            del table_score
 
-            y_proba = pd.DataFrame(self.model.predict_proba(table_score), index=table_score.index)[1]
+            # sort the results
+            y_proba.sort_values(ascending=False,inplace=True)
 
             return y_proba
 
@@ -189,17 +234,17 @@ class RecordLinker:
         Args:
 
         Returns:
-            pd.Index: the index of the potential matches in the target records table
+            pd.Index: the score of the potential matches in the target records table
         """
-        filtered_score = scoringfunctions.filter_df(df=self.df,
+        filtered_bool = scoringfunctions.filter_df(df=self.df,
                                                     query=self.query,
                                                     id_cols=self.id_cols,
-                                                    loc_col=self.loc_col,
-                                                    fuzzy_filter_cols=self.fuzzy_filter_cols)
+                                                    loc_col=self.loc_col)
+        filtered_bool=filtered_bool.astype(bool)
+        return filtered_bool.loc[filtered_bool>self.filter_threshold].index
 
-        return filtered_score.loc[filtered_score > self.filter_threshold].index
-
-    def create_similarity_features(self, filtered_index):
+    def create_similarity_features(self, filtered_index, query,feature_cols=None,fuzzy_feature_cols=None,tokens_feature_cols=None,
+                                   exact_feature_cols=None,acronym_col=None):
         """
         Return a comparison table for all indexes of the filtered_index (as input)
         Args:
@@ -209,12 +254,12 @@ class RecordLinker:
             pd.DataFrame, table of scores, where each column is a score (should be the same as self.traincols).
         """
         table_score = scoringfunctions.build_similarity_table(df=self.df.loc[filtered_index],
-                                                              query=self.query,
-                                                              feature_cols=self.feature_cols,
-                                                              fuzzy_feature_cols=self.fuzzy_feature_cols,
-                                                              tokens_feature_cols=self.tokens_feature_cols,
-                                                              exact_feature_cols=self.exact_feature_cols,
-                                                              acronym_col=self.acronym_col,
-                                                              traincols=self.traincols
+                                                              query=query,
+                                                              feature_cols=feature_cols,
+                                                              fuzzy_feature_cols=fuzzy_feature_cols,
+                                                              tokens_feature_cols=tokens_feature_cols,
+                                                              exact_feature_cols=exact_feature_cols,
+                                                              acronym_col=acronym_col
                                                               )
+
         return table_score
