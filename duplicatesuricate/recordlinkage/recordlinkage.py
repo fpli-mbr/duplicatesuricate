@@ -288,13 +288,15 @@ class RecordLinker:
 
 
 def check_column_same(a, b):
+    import numpy as np
     if set(a) == set(b):
         return True
     else:
-        missing_a_columns = list(filter(lambda x: x not in a, b))
+        common_set=np.intersect1d(a,b)
+        missing_a_columns = list(filter(lambda x: x not in common_set, b))
         if len(missing_a_columns) > 0:
             print('unknown columns from', b.name, 'not in', a.name, ':', missing_a_columns)
-        missing_b_columns = list(filter(lambda x: x not in b, a))
+        missing_b_columns = list(filter(lambda x: x not in common_set, a))
         if len(missing_b_columns) > 0:
             print('unknown columns from', a.name, 'not in', b.name, ':', missing_b_columns)
         return False
