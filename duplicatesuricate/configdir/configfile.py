@@ -12,12 +12,13 @@ fuzzy_filter_cols = ['streetaddress', 'companyname']
 
 #### SIMILITARITY TABLE COLUMN NAMES ####
 # COLUMN NAMES
-feature_cols = []
+feature_cols = ['companyname_len']
 fuzzy_feature_cols = ['companyname',
-                           'streetaddress',  'cityname', 'postalcode']
+                           'streetaddress',  'cityname', 'postalcode',
+                      'companyname_wostopwords', 'companyname_acronym','streetaddress_wostopwords']
 tokens_feature_cols = []
 exact_feature_cols = ['country', 'dunsnumber', 'taxid',
-                           'registerid']
+                           'registerid','postalcode_1stdigit', 'postalcode_2digits']
 acronym_col = 'companyname'
 # Similarity cols
 similarity_cols = [c + '_row' for c in feature_cols] + [c + '_query' for c in feature_cols]

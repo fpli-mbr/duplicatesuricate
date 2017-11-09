@@ -4,7 +4,7 @@
 
 import numpy as np
 import pandas as pd
-from neatmartinet import compare_tokenized_strings,compare_twostrings,acronym,split,navalues,separatorlist
+from neatmartinet import compare_tokenized_strings,acronym, compare_twostrings
 # %%
 def exactmatch(a, b):
     if pd.isnull(a) or pd.isnull(b):
