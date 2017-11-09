@@ -7,19 +7,34 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
 
 from duplicatesuricate.recordlinkage import scoringfunctions
-from duplicatesuricate import config
+from duplicatesuricate.configdir import configfile
 
 
 class RecordLinker:
     def __init__(self, verbose=True,
                  df=pd.DataFrame(),
-                 id_cols=config.id_cols, loc_col=config.loc_col, fuzzy_filter_cols=config.fuzzy_filter_cols,
-                 feature_cols=config.feature_cols,
-                 fuzzy_feature_cols=config.fuzzy_feature_cols,
-                 tokens_feature_cols=config.tokens_feature_cols,
-                 exact_feature_cols=config.exact_feature_cols,
-                 acronym_col=config.acronym_col,
-                 n_estimators=2000):
+                 id_cols=configfile.id_cols, loc_col=configfile.loc_col, fuzzy_filter_cols=configfile.fuzzy_filter_cols,
+                 feature_cols=configfile.feature_cols,
+                 fuzzy_feature_cols=configfile.fuzzy_feature_cols,
+                 tokens_feature_cols=configfile.tokens_feature_cols,
+                 exact_feature_cols=configfile.exact_feature_cols,
+                 acronym_col=configfile.acronym_col,
+                 n_estimators=500):
+        """
+        The machine-learning par of the program
+        Args:
+            verbose (bool): control print output 
+            df (pd.DataFrame): target records 
+            id_cols: names of the columns which contain an id
+            loc_col: name of the column of the location (often, country)
+            fuzzy_filter_cols: fuzzy scoring cols for filtering
+            feature_cols (list): list of columns with numerical values related to the query description (string length..)
+            fuzzy_feature_cols (list): list of columns on which to calculate fuzzy string matching
+            tokens_feature_cols (list): list of columns on which to calculate fuzzy token string matching
+            exact_feature_cols (list): list of columns on which to calculate an exact matching (0 or 1)
+            acronym_col (str): name of column on which to calculate the acronym score
+            n_estimators (int): number of estimators for the Random Forest Algorithm
+        """
         self.verbose = verbose
         self.model = RandomForestClassifier(n_estimators=n_estimators)
 
@@ -43,9 +58,9 @@ class RecordLinker:
         self.acronym_col = acronym_col
         pass
 
-    def train(self, warmstart=False, training_set=pd.DataFrame(), target_col='ismatch'):
+    def fit(self, warmstart=False, training_set=pd.DataFrame(), target_col='ismatch'):
         """
-        train the machine learning model on the provided data set
+        fit the machine learning model on the provided data set
         Args:
             warmstart (bool): if the model is already trained
             training_set (pd.DataFrame): pandas DataFrame containing annotated data
@@ -55,27 +70,16 @@ class RecordLinker:
             None
 
         """
+        if target_col not in training_set.columns:
+            raise KeyError('target column ', target_col, ' not found in training set columns')
+        # Define training set and target vector
+        self.traincols = list(filter(lambda x: x != target_col, training_set.columns))
+
         start = pd.datetime.now()
-        X_train = pd.DataFrame()
+        x_train = pd.DataFrame()
         y_train = pd.Series()
 
-        if warmstart is True:
-            if training_set.shape[0] == 0:
-                training_set = pd.read_csv(config.training_filename, nrows=1, encoding='utf-8', sep=',')
-
-            if target_col not in training_set.columns:
-                raise KeyError('target column ', target_col, ' not found in training set columns')
-
-            # Define training set and target vector
-            self.traincols = list(filter(lambda x: x != target_col, training_set.columns))
-
-        else:
-            if training_set.shape[0] == 0:
-                training_set = pd.read_csv(config.training_filename, encoding='utf-8', sep=',')
-
-            if target_col not in training_set.columns:
-                raise KeyError('target column ', target_col, ' not found in training set columns')
-
+        if warmstart is False:
             if self.verbose:
                 print('shape of training table ', training_set.shape)
                 print('number of positives in table', training_set[target_col].sum())
@@ -83,22 +87,22 @@ class RecordLinker:
             # Check that the training columns
             traincols = list(filter(lambda x: x != target_col, training_set.columns))
 
-            if all(map(lambda x: x in traincols, config.similarity_cols)) is False:
+            if all(map(lambda x: x in traincols, configfile.similarity_cols)) is False:
                 raise KeyError(
-                    'output of scoring function and training columns do not match, check config file or Training file')
+                    'output of scoring function and training columns do not match, check configdir file or Training file')
 
-            self.traincols = config.similarity_cols
+            self.traincols = configfile.similarity_cols
 
             # Define training set and target vector
-            X_train = training_set[self.traincols].fillna(-1)  # fill na values
+            x_train = training_set[self.traincols].fillna(-1)  # fill na values
             y_train = training_set[target_col]
 
             # fit the model
-            self.model.fit(X_train, y_train)
+            self.model.fit(x_train, y_train)
 
         if self.verbose:
             # show precision and recall score of the model on training data
-            y_pred = self.model.predict(X_train)
+            y_pred = self.model.predict(x_train)
             precision = precision_score(y_true=y_train, y_pred=y_pred)
             recall = recall_score(y_true=y_train, y_pred=y_pred)
             print('precision score on training data:', precision)
@@ -124,11 +128,9 @@ class RecordLinker:
         """
         y_bool = self.predict(target_records, query)
         if y_bool is None:
-            print('len(goodmatches)', 0)
             return None
         else:
             goodmatches = y_bool.loc[y_bool].index
-            print('len(goodmatches)', len(goodmatches))
             return goodmatches
 
     def predict(self, target_records, query):
@@ -153,7 +155,12 @@ class RecordLinker:
 
     def predict_proba(self, target_records, query):
         """
-        This
+        This is the heart of the program:
+        - pre-filter all records
+        - filter using fuzzy matching on selected columns, then select those above a certain threshold 
+        - do additional comparison on other columns
+        - predict_proba on the table of comparison score using the ML model
+        - return probability of being a match
         Args:
             target_records (pd.DataFrame): the table containing the target records
             query (pd.Series): information available on our query
@@ -164,16 +171,14 @@ class RecordLinker:
         """
         self.df = target_records
         self.query = query.copy()
-        start = pd.datetime.now()
+
+        # timing
+        time_start = pd.datetime.now()
 
         # pre filter the records for further scoring: 0 if not possible choice, 0.5 if possible choice, 1 if sure choice
         y_pre_filter = self.pre_filter_records()
         y_pre_filter = y_pre_filter.loc[y_pre_filter > 0]
         ix_pre_filter = y_pre_filter.index
-
-        end = pd.datetime.now()
-        print('time pre-filtering', (end - start).total_seconds(), 'len(pre_filtering)', len(ix_pre_filter))
-        start = end
 
         if len(ix_pre_filter) == 0:
             return None
@@ -195,9 +200,11 @@ class RecordLinker:
             # we remove the filter_score
             table_score_filter.drop(labels=['y_pre_filter'], axis=1, inplace=True)
 
-            end = pd.datetime.now()
-            print('time filtering', (end - start).total_seconds(), 'len(ix_filter)', len(ix_filter))
-            start = end
+            # timing
+            time_end = pd.datetime.now()
+            time_filtering = (time_end - time_start).total_seconds()
+            n_ixfilter = (len(ix_filter))
+            time_start = time_end
 
             if table_score_filter.shape[0] == 0:
                 return None
@@ -217,9 +224,10 @@ class RecordLinker:
                 # we join the two tables to have a complete view of the score
                 table_score_complete = table_score_filter.join(table_score_additional, how='left')
 
-                end = pd.datetime.now()
-                print('time additional scoring', (end - start).total_seconds())
-                start = end
+                # timing
+                time_end = pd.datetime.now()
+                time_additionalscoring = (time_end - time_start).total_seconds()
+                time_start = time_end
 
                 # check column length are adequate
                 traincols = pd.Index(self.traincols)
@@ -238,10 +246,13 @@ class RecordLinker:
 
                 # launch prediction using the predict_proba of the scikit-learn module
                 y_proba = \
-                pd.DataFrame(self.model.predict_proba(table_score_complete), index=table_score_complete.index)[1].copy()
+                    pd.DataFrame(self.model.predict_proba(table_score_complete), index=table_score_complete.index)[
+                        1].copy()
 
-                end = pd.datetime.now()
-                print('time predicting', (end - start).total_seconds())
+                # timing
+                time_predicting = (time_end - time_start).total_seconds()
+                n_ixpredict = sum(y_proba > self.decision_threshold)
+
                 del table_score_complete
 
                 # sort the results
@@ -271,6 +282,12 @@ class RecordLinker:
         Return a comparison table for all indexes of the filtered_index (as input)
         Args:
             filtered_index (pd.Index): index of rows on which to perform the deduplication
+            query (pd.Series): query with its attributes
+            feature_cols (list): list of numerical values related to the query description (string length..)
+            fuzzy_feature_cols (list): list of columns on which to calculate fuzzy string matching
+            tokens_feature_cols (list): list of columns on which to calculate fuzzy token string matching
+            exact_feature_cols (list): list of columns on which to calculate an exact matching (0 or 1)
+            acronym_col (str): name of column on which to calculate the acronym score
 
         Returns:
             pd.DataFrame, table of scores, where each column is a score (should be the same as self.traincols).
@@ -292,7 +309,7 @@ def check_column_same(a, b):
     if set(a) == set(b):
         return True
     else:
-        common_set=np.intersect1d(a,b)
+        common_set = np.intersect1d(a, b)
         missing_a_columns = list(filter(lambda x: x not in common_set, b))
         if len(missing_a_columns) > 0:
             print('unknown columns from', b.name, 'not in', a.name, ':', missing_a_columns)

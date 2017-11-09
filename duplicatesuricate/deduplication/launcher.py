@@ -2,13 +2,13 @@
 import pandas as pd
 import numpy as np
 from duplicatesuricate.preprocessing.companycleaning import clean_db
-import duplicatesuricate.config as config
+from duplicatesuricate.configdir import configfile
 from duplicatesuricate.recordlinkage import RecordLinker
 
 
 class Launcher:
-    def __init__(self, input_records=pd.DataFrame(), target_records=pd.DataFrame(),  idcol=config.idcol,
-                 queryidcol=config.queryidcol, verbose=True):
+    def __init__(self, input_records=pd.DataFrame(), target_records=pd.DataFrame(), idcol=configfile.idcol,
+                 queryidcol=configfile.queryidcol, verbose=True):
         """
         Args:
             input_records (pd.DataFrame): Input table for record linkage, records to link
@@ -79,13 +79,13 @@ class Launcher:
 
     def _find_matches_(self, query_index, n_matches_max=1):
         """
-        Deduplicate a row (search for duplicates in the target records and update the groupid col)
+       search for records in the target records that match the query (input_records.loc[query_index])
         Args:
             query_index: index of the row to be deduplicated
-            n_matches_max (int): max number of matches to be fetched
+            n_matches_max (int): max number of matches to be fetched. If None, all matches would be returned
 
         Returns:
-            matches
+            pd.Index (list of index in the target records)
         """
 
         # return the good matches as calculated by the model
@@ -101,22 +101,67 @@ class Launcher:
 
     def link_input_to_target(self, in_index=None, n_matches_max=1):
         """
-        
+        Takes as input an index of the input records, and returns a dict showing their corresponding matches
+        on the target records
         Args:
-            in_index (pd.Index): 
-            n_matches_max (int): 
+            in_index (pd.Index): index of the records (from input_records) to be deduplicated
+            n_matches_max (int): maximum number of possible matches to be returned. 
+                If none, all matches would be returned
 
         Returns:
-            pd.DataFrame results
+            dict : results in the form of {index_of_input_record:[list of index_of_target_records]}
         """
         if in_index is None:
             in_index = self.input_records.index
-        results = pd.DataFrame(columns=[0])
+
+        n_total = len(in_index)
+
+        if find_missing_keys_in_index(in_index, self.input_records.index) is True:
+            raise KeyError('in_index called is not contained in input_records index')
+
+        print('starting deduplication at {}'.format(pd.datetime.now()))
+        results = {}
         for i, ix in enumerate(in_index):
+            # timing
+            time_start = pd.datetime.now()
+
             goodmatches_index = self._find_matches_(query_index=ix, n_matches_max=n_matches_max)
+
             if goodmatches_index is None:
-                results.loc[ix] = None
+                results[ix] = None
+                n_deduplicated = 0
             else:
-                s = pd.Series(data=goodmatches_index, index=range(len(goodmatches_index)), name=ix)
-                results=results.append(s)
+                results[ix] = list(goodmatches_index)
+                n_deduplicated = len(results[ix])
+
+            # timing
+            time_end = pd.datetime.now()
+            duration = (time_end - time_start).total_seconds()
+
+            if self.verbose:
+                print('{} of {} deduplicated | time elapsed {} s'.format(n_deduplicated, n_total, duration))
+
+        print('finished work at {}'.format(pd.datetime.now()))
+
         return results
+
+
+def find_missing_keys_in_index(keys, ref_list, verbose=True):
+    """
+    Takes as input the a list of keys, and check if they are present in a reference list
+    For example, make sure that all of the keys are in the index before launching a loop
+    Args:
+        keys (iterable): list of keys to be checked
+        ref_list (iterable): list of reference keys
+        verbose (bool): whether or not to print the statements
+
+    Returns:
+        bool: If True, then keys are missing
+    """
+    incorrect_keys = list(filter(lambda x: x not in ref_list, keys))
+    if len(incorrect_keys) > 0:
+        if verbose:
+            print('those keys are missing in the index:', incorrect_keys)
+        return True
+    else:
+        return False
