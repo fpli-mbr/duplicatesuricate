@@ -1,7 +1,8 @@
 # %%
 # author : amber ocelot
 # coding=utf-8
-
+import duplicatesuricate.deduplication.launcherconfig
+import duplicatesuricate.preprocessing.companydata
 import numpy as np
 import pandas as pd
 import neatmartinet as nm
@@ -10,9 +11,9 @@ from duplicatesuricate.configdir import configfile
 
 
 def clean_db(df):
-    companystopwords = configfile.companystopwords_list
-    streetstopwords = configfile.streetstopwords_list
-    endingwords = configfile.endingwords_list
+    companystopwords = duplicatesuricate.preprocessing.companydata.companystopwords_list
+    streetstopwords = duplicatesuricate.preprocessing.companydata.streetstopwords_list
+    endingwords = duplicatesuricate.preprocessing.companydata.endingwords_list
 
     df['Index'] = df.index
 
@@ -21,7 +22,8 @@ def clean_db(df):
         raise KeyError('Error: index is not unique')
 
     # check if columns is in the existing database, other create a null one
-    for c in [configfile.idcol, configfile.queryidcol]:
+    for c in [duplicatesuricate.deduplication.launcherconfig.idcol,
+              duplicatesuricate.deduplication.launcherconfig.queryidcol]:
         if c not in df.columns:
             df[c] = None
 
@@ -30,7 +32,8 @@ def clean_db(df):
         df[c] = df[c].apply(nm.normalizechars)
 
     # remove bad possible matches
-    df.loc[df[configfile.idcol] == 0, configfile.idcol] = np.nan
+    df.loc[df[
+               duplicatesuricate.deduplication.launcherconfig.idcol] == 0, duplicatesuricate.deduplication.launcherconfig.idcol] = np.nan
 
     # convert all duns number as strings with 9 chars
     df['dunsnumber'] = df['dunsnumber'].apply(lambda r: nm.convert_int_to_str(r, 9))
@@ -90,12 +93,13 @@ def clean_db(df):
     df['cityfrequency'] = nm.calculate_cat_frequency(df['cityname'])
 
     # Define the list of big cities
-    df['isbigcity'] = df['cityname'].isin(configfile.bigcities).astype(int)
+    df['isbigcity'] = df['cityname'].isin(duplicatesuricate.preprocessing.companydata.bigcities).astype(int)
 
     # Define the list of airbus names and equivalents
 
     df['has_airbusequiv'] = df['companyname_wostopwords'].apply(
-        lambda r: 0 if pd.isnull(r) else any(w in r for w in configfile.airbus_names)).astype(
+        lambda r: 0 if pd.isnull(r) else any(w in r for w in
+                                             duplicatesuricate.preprocessing.companydata.airbus_names)).astype(
         int)
 
     return df
