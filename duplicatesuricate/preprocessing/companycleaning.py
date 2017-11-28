@@ -1,45 +1,36 @@
 # %%
 # author : amber ocelot
 # coding=utf-8
-import duplicatesuricate.deduplication.launcherconfig
-import duplicatesuricate.preprocessing.companydata
+import neatmartinet as nm
 import numpy as np
 import pandas as pd
-import neatmartinet as nm
-from duplicatesuricate.configdir import configfile
+
+import duplicatesuricate.preprocessing.companydata
 
 
-
-def clean_db(df):
+def clean_db(df,on_cols=None):
     companystopwords = duplicatesuricate.preprocessing.companydata.companystopwords_list
     streetstopwords = duplicatesuricate.preprocessing.companydata.streetstopwords_list
     endingwords = duplicatesuricate.preprocessing.companydata.endingwords_list
 
-    df['Index'] = df.index
-
     # Create an alert if the index is not unique
-    if df['Index'].unique().shape[0] != df.shape[0]:
+    if pd.Series(df.index).unique().shape[0] != df.shape[0]:
         raise KeyError('Error: index is not unique')
 
-    # check if columns is in the existing database, other create a null one
-    for c in [duplicatesuricate.deduplication.launcherconfig.idcol,
-              duplicatesuricate.deduplication.launcherconfig.queryidcol]:
-        if c not in df.columns:
-            df[c] = None
+    # # check if columns is in the existing database, other create a null one
+    # for c in [duplicatesuricate.preprocessing.companydata.idcol,
+    #           duplicatesuricate.preprocessing.companydata.queryidcol]:
+    #     if c not in df.columns:
+    #         df[c] = None
 
     # normalize the strings
-    for c in ['companyname', 'streetaddress', 'cityname']:
-        df[c] = df[c].apply(nm.normalizechars)
-
-    # remove bad possible matches
-    df.loc[df[
-               duplicatesuricate.deduplication.launcherconfig.idcol] == 0, duplicatesuricate.deduplication.launcherconfig.idcol] = np.nan
+    for c in np.intersect1d(on_cols,['companyname', 'streetaddress', 'cityname']):
+        df[c] = df[c].apply(nm.format_ascii_lower)
 
     # convert all duns number as strings with 9 chars
-    df['dunsnumber'] = df['dunsnumber'].apply(lambda r: nm.convert_int_to_str(r, 9))
-
     def cleanduns(s):
         # remove bad duns like DE0000000
+        s = nm.format_int_to_str(s,zeropadding=9)
         if pd.isnull(s):
             return None
         else:
@@ -48,25 +39,28 @@ def clean_db(df):
                 return None
             else:
                 return s
-
-    df['dunsnumber'] = df['dunsnumber'].apply(cleanduns)
+    if 'dunsnumber' in on_cols:
+        df['dunsnumber'] = df['dunsnumber'].apply(cleanduns)
 
     # convert all postal codes to strings
-    df['postalcode'] = df['postalcode'].apply(lambda r: nm.convert_int_to_str(r))
+    if 'postalcode' in on_cols:
+        df['postalcode'] = df['postalcode'].apply(lambda r: nm.format_int_to_str(r))
 
     # convert all taxid and registerid to string
-    for c in ['taxid', 'registerid']:
+    for c in np.intersect1d(on_cols,['taxid', 'registerid']):
         if c in df.columns:
             df[c] = df[c].astype(str).replace(nm.nadict)
         else:
             df[c] = None
 
     # remove stopwords from company names
-    df['companyname_wostopwords'] = df['companyname'].apply(
-        lambda r: nm.rmv_stopwords(r, stopwords=companystopwords))
+    if 'companyname_wostopwords' in on_cols:
+        df['companyname_wostopwords'] = df['companyname'].apply(
+            lambda r: nm.rmv_stopwords(r, stopwords=companystopwords))
 
-    # create acronyms of company names
-    df['companyname_acronym'] = df['companyname'].apply(nm.acronym)
+    if 'companyname_acronym' in on_cols:
+        # create acronyms of company names
+        df['companyname_acronym'] = df['companyname'].apply(nm.acronym)
 
     # remove stopwords from street addresses
     df['streetaddress_wostopwords'] = df['streetaddress'].apply(

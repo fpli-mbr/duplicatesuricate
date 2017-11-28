@@ -58,3 +58,5 @@ bigcities = ['munich',
              'ulm',
              'stuttgart', 'blagnac']
 airbus_names = ['airbus', 'casa', 'eads', 'cassidian', 'astrium', 'eurocopter']
+idcol = 'groupid'
+queryidcol='queryname'
