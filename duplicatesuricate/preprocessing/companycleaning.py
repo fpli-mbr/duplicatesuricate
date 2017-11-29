@@ -1,101 +1,86 @@
 # %%
 # author : amber ocelot
 # coding=utf-8
-
+import neatmartinet as nm
 import numpy as np
 import pandas as pd
-import neatmartinet as nm
-from duplicatesuricate.configdir import configfile
 
+import duplicatesuricate.preprocessing.companydata
 
+companystopwords = duplicatesuricate.preprocessing.companydata.companystopwords_list
+streetstopwords = duplicatesuricate.preprocessing.companydata.streetstopwords_list
+endingwords = duplicatesuricate.preprocessing.companydata.endingwords_list
+bigcities = duplicatesuricate.preprocessing.companydata.bigcities
+airbusnames = duplicatesuricate.preprocessing.companydata.airbus_names
 
-def clean_db(df):
-    companystopwords = configfile.companystopwords_list
-    streetstopwords = configfile.streetstopwords_list
-    endingwords = configfile.endingwords_list
+#TODO : rename columns of idcols and cleandict
 
-    df['Index'] = df.index
-
-    # Create an alert if the index is not unique
-    if df['Index'].unique().shape[0] != df.shape[0]:
-        raise KeyError('Error: index is not unique')
-
-    # check if columns is in the existing database, other create a null one
-    for c in [configfile.idcol, configfile.queryidcol]:
-        if c not in df.columns:
-            df[c] = None
-
-    # normalize the strings
-    for c in ['companyname', 'streetaddress', 'cityname']:
-        df[c] = df[c].apply(nm.normalizechars)
-
-    # remove bad possible matches
-    df.loc[df[configfile.idcol] == 0, configfile.idcol] = np.nan
-
-    # convert all duns number as strings with 9 chars
-    df['dunsnumber'] = df['dunsnumber'].apply(lambda r: nm.convert_int_to_str(r, 9))
-
-    def cleanduns(s):
-        # remove bad duns like DE0000000
-        if pd.isnull(s):
+# convert all duns number as strings with 9 chars
+def cleanduns(s):
+    # remove bad duns like DE0000000
+    s = nm.format_int_to_str(s, zeropadding=9)
+    if pd.isnull(s):
+        return None
+    else:
+        s = str(s).rstrip('00000')
+        if len(s) <= 5 or s[:3] == 'NDM':
             return None
         else:
-            s = str(s).rstrip('00000')
-            if len(s) <= 5 or s[:3]=='NDM':
-                return None
-            else:
-                return s
+            return s
+rmv_companystopwords = lambda r: nm.rmv_stopwords(r, stopwords=companystopwords)
+rmv_streetstopwords = lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords)
+extract_postalcode_1digit= lambda r: None if pd.isnull(r) else str(r)[:1]
+extract_postalcode_2digits = lambda r: None if pd.isnull(r) else str(r)[:2]
+hasairbusname= lambda r: None if pd.isnull(r) else int(any(w in r for w in airbusnames))
+isbigcity=lambda r: None if pd.isnull(r) else int(any(w in r for w in bigcities))
+name_len = lambda r:None if pd.isnull(r) else len(r)
 
-    df['dunsnumber'] = df['dunsnumber'].apply(cleanduns)
 
-    # convert all postal codes to strings
-    df['postalcode'] = df['postalcode'].apply(lambda r: nm.convert_int_to_str(r))
+id_cols=['registerid', 'registerid1', 'registerid2', 'taxid', 'kapisid']
+cleandict = {
+    'dunsnumber': cleanduns,
+    'name': nm.format_ascii_lower,
+    'street': nm.format_ascii_lower,
+    'city': nm.format_ascii_lower,
+    'name_wostopwords': (lambda r: nm.rmv_stopwords(r, stopwords=companystopwords), 'name'),
+    'street_wostopwords': (lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords), 'street'),
+    'name_acronym': (lambda r: nm.acronym(r), 'name'),
+    'postalcode': nm.format_int_to_str,
+    'postalcode_1stdigit': (lambda r: None if pd.isnull(r) else str(r)[:1], 'postalcode'),
+    'postalcode_2digits': (lambda r: None if pd.isnull(r) else str(r)[:2], 'postalcode'),
+    'name_len': (lambda r: len(r), 'name'),
+    'hasairbusname': (lambda r: 0 if pd.isnull(r) else int(any(w in r for w in airbusnames)), 'name'),
+    'isbigcity': (lambda r: 0 if pd.isnull(r) else int(any(w in r for w in bigcities)), 'city')
 
-    # convert all taxid and registerid to string
-    for c in ['taxid', 'registerid']:
-        if c in df.columns:
-            df[c] = df[c].astype(str).replace(nm.nadict)
+}
+
+for c in id_cols:
+    cleandict[c] = nm.format_int_to_str
+
+
+def clean_db(df, cleandict=cleandict):
+    companystopwords = duplicatesuricate.preprocessing.companydata.companystopwords_list
+    streetstopwords = duplicatesuricate.preprocessing.companydata.streetstopwords_list
+    endingwords = duplicatesuricate.preprocessing.companydata.endingwords_list
+
+    # Create an alert if the index is not unique
+    if pd.Series(df.index).unique().shape[0] != df.shape[0]:
+        raise KeyError('Error: index is not unique')
+
+    # # check if columns is in the existing database, other create a null one
+    # for c in [duplicatesuricate.preprocessing.companydata.idcol,
+    #           duplicatesuricate.preprocessing.companydata.queryidcol]:
+    #     if c not in df.columns:
+    #         df[c] = None
+
+    for k in cleandict.keys():
+        newcol = k
+        if type(cleandict[k])==tuple:
+            oncol=cleandict[k][1]
+            myfunc=cleandict[k][0]
         else:
-            df[c] = None
-
-    # remove stopwords from company names
-    df['companyname_wostopwords'] = df['companyname'].apply(
-        lambda r: nm.rmv_stopwords(r, stopwords=companystopwords))
-
-    # create acronyms of company names
-    df['companyname_acronym'] = df['companyname'].apply(nm.acronym)
-
-    # remove stopwords from street addresses
-    df['streetaddress_wostopwords'] = df['streetaddress'].apply(
-        lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords, endingwords=endingwords))
-
-    # Take the first digits and the first two digits of the postal code
-    df['postalcode_1stdigit'] = df['postalcode'].apply(
-        lambda r: np.nan if pd.isnull(r) else str(r)[:1]
-    )
-    df['postalcode_2digits'] = df['postalcode'].apply(
-        lambda r: np.nan if pd.isnull(r) else str(r)[:2]
-    )
-
-    # Calculate length of strings
-    for c in ['companyname']:
-        mycol = c + '_len'
-        df[mycol] = df[c].apply(lambda r: None if pd.isnull(r) else len(r))
-        max_length = df[mycol].max()
-        df.loc[df[mycol].isnull() == False, mycol] = df.loc[df[
-                                                                mycol].isnull() == False, mycol] / max_length
-
-
-    # Calculate frequency of city used
-    df['cityfrequency'] = nm.calculate_cat_frequency(df['cityname'])
-
-    # Define the list of big cities
-    df['isbigcity'] = df['cityname'].isin(configfile.bigcities).astype(int)
-
-    # Define the list of airbus names and equivalents
-
-    df['has_airbusequiv'] = df['companyname_wostopwords'].apply(
-        lambda r: 0 if pd.isnull(r) else any(w in r for w in configfile.airbus_names)).astype(
-        int)
+            oncol=k
+            myfunc=cleandict[k]
+        df[newcol]=df[oncol].apply(myfunc)
 
     return df

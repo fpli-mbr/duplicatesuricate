@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='duplicatesuricate',
-      version='0.3.2',
+      version='0.3.4',
       description='Entity resolution algorithm implemented with scikit-learn',
       author='Amber Ocelot',
       author_email='AmberOcelot@gmail.com',
