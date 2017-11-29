@@ -9,7 +9,7 @@ class RecordLinker:
                  intermediate_thresholds=None,
                  fillna=-1,
                  evaluator=None,
-                 decision_threshold=0.8,
+                 decision_threshold=0.5,
                  verbose=True):
         """
         This class merges together the Scorer and the Evaluation model.

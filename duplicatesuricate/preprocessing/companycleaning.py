@@ -13,6 +13,7 @@ endingwords = duplicatesuricate.preprocessing.companydata.endingwords_list
 bigcities = duplicatesuricate.preprocessing.companydata.bigcities
 airbusnames = duplicatesuricate.preprocessing.companydata.airbus_names
 
+#TODO : rename columns of idcols and cleandict
 
 # convert all duns number as strings with 9 chars
 def cleanduns(s):
@@ -26,6 +27,14 @@ def cleanduns(s):
             return None
         else:
             return s
+rmv_companystopwords = lambda r: nm.rmv_stopwords(r, stopwords=companystopwords)
+rmv_streetstopwords = lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords)
+extract_postalcode_1digit= lambda r: None if pd.isnull(r) else str(r)[:1]
+extract_postalcode_2digits = lambda r: None if pd.isnull(r) else str(r)[:2]
+hasairbusname= lambda r: None if pd.isnull(r) else int(any(w in r for w in airbusnames))
+isbigcity=lambda r: None if pd.isnull(r) else int(any(w in r for w in bigcities))
+name_len = lambda r:None if pd.isnull(r) else len(r)
+
 
 id_cols=['registerid', 'registerid1', 'registerid2', 'taxid', 'kapisid']
 cleandict = {
