@@ -3,13 +3,13 @@ import pandas as pd
 from duplicatesuricate.deduplication import RecordLinker,Launcher
 from duplicatesuricate.evaluation import FuncEvaluationModel
 
-# name_input_record = 'mytable.csv'
-# name_target_record = 'reference_table.csv'
-# name_training_table = 'training_table.csv'
-
-
 if __name__ == '__main__':
 
+    ### Load the reference records and the file to be checked as pd.DataFrame
+    df_input_records = pd.read_excel('helicopters.xlsx',index_col=0,sheet_name='source')
+    df_target_records = pd.read_excel('helicopters.xlsx',index_col=0,sheet_name='target')
+
+    ## Create evaluation model
     loc_cols = ['location', 'constructor']
     id_cols = ['serieid']
     filter_dict = {'all': loc_cols, 'any': id_cols}
@@ -29,16 +29,12 @@ if __name__ == '__main__':
         else:
             return 1
 
-
     model = FuncEvaluationModel(used_cols=hard_cols,
                                 eval_func=hardcodedfunc)
-
-    ### Load the reference records and the file to be checked as pd.DataFrame
-    df_input_records = pd.read_excel('helicopters2.xlsx',index_col=0,sheetname='source')
-    df_target_records = pd.read_excel('helicopters2.xlsx',index_col=0,sheetname='target')
-    query=df_input_records.iloc[0]
-
+    #optional
     model.fit()
+
+    # create linker and launcher
     rl = RecordLinker(df=df_target_records,
                       filterdict=filter_dict,
                       intermediate_thresholds=intermediate_threshold,
@@ -47,8 +43,8 @@ if __name__ == '__main__':
                   target_records=df_target_records,
                   cleanfunc=None,
                   linker=rl)
-    #z=rl.return_good_matches(query)
+    # Start linkage
     y = lh.start_linkage()
     z=lh.format_results(y,display=['productname','location','constructor'],fuzzy=['productname'])
     print(z)
-    ### results are in the form of a dict {index_of_input_record:[list of index_of_target_records]}
+
