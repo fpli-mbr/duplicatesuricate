@@ -11,7 +11,7 @@ scorefuncs = {'fuzzy': nm.compare_twostrings,
               'token': nm.compare_tokenized_strings,
               'exact': nm.exactmatch,
               'acronym': nm.compare_acronyme}
-scoringkeys=list(scorename.keys())
+scoringkeys = list(scorename.keys())
 
 
 class Scorer:
@@ -27,29 +27,27 @@ class Scorer:
             score_further (dict):
             fillna (float): Value used to fill the na values
         """
-        #TODO : docstring of scorer class
+        # TODO : docstring of scorer class
+
         self.df = df
         self.scorecols = []
-        self.compared_cols=[]
+        self.compared_cols = []
 
         self.filterdict = _checkdict(filterdict, mandatorykeys=['all', 'any'], existinginput=self.scorecols)
-        incols,outcols= _unpack_scoredict(self.filterdict)
-        self.compared_cols+=incols
-        self.scorecols+=outcols
+        incols, outcols = _unpack_scoredict(self.filterdict)
+        self.compared_cols += incols
+        self.scorecols += outcols
 
         self.intermediate_score = _checkdict(score_intermediate, mandatorykeys=scoringkeys,
                                              existinginput=self.scorecols)
-        incols,outcols= _unpack_scoredict(self.intermediate_score)
-        self.compared_cols+=incols
-        self.scorecols+=outcols
+        incols, outcols = _unpack_scoredict(self.intermediate_score)
+        self.compared_cols += incols
+        self.scorecols += outcols
 
         self.further_score = _checkdict(score_further, mandatorykeys=scoringkeys, existinginput=self.scorecols)
-        incols,outcols= _unpack_scoredict(self.further_score)
-        self.compared_cols+=incols
-        self.scorecols+=outcols
-
-        for c in self.compared_cols,self.scorecols:
-            c=list(set(c))
+        incols, outcols = _unpack_scoredict(self.further_score)
+        self.compared_cols += incols
+        self.scorecols += outcols
 
         self.intermediate_func = decision_intermediate
 
@@ -92,7 +90,7 @@ class Scorer:
                     lambda r: nm.exactmatch(r, query[c]))
 
             y = (match_any_df == 1)
-            assert isinstance(y,pd.DataFrame)
+            assert isinstance(y, pd.DataFrame)
             anycriteriasmatch = y.any(axis=1)
             table = pd.concat([table, match_any_df], axis=1)
         else:
@@ -104,7 +102,7 @@ class Scorer:
                 match_all_df[c + '_exactscore'] = df[c].apply(
                     lambda r: nm.exactmatch(r, query[c]))
             y = (match_all_df == 1)
-            assert isinstance(y,pd.DataFrame)
+            assert isinstance(y, pd.DataFrame)
             allcriteriasmatch = y.all(axis=1)
 
             table = pd.concat([table, match_all_df], axis=1)
@@ -113,7 +111,7 @@ class Scorer:
 
         results = (allcriteriasmatch | anycriteriasmatch)
 
-        assert isinstance(table,pd.DataFrame)
+        assert isinstance(table, pd.DataFrame)
 
         return table.loc[results]
 
@@ -199,9 +197,9 @@ class Scorer:
             del table_intermediate
 
             y_intermediate = table_score_complete.apply(lambda r: self.intermediate_func(r), axis=1)
-            y_intermediate=y_intermediate.astype(bool)
+            y_intermediate = y_intermediate.astype(bool)
 
-            assert isinstance(y_intermediate,pd.Series)
+            assert isinstance(y_intermediate, pd.Series)
             assert (y_intermediate.dtype == bool)
 
             table_score_complete = table_score_complete.loc[y_intermediate]
@@ -218,9 +216,9 @@ class Scorer:
                                                                scoredict=self.further_score)
 
                 # check to make sure no duplicates columns
-                duplicatecols = list(filter(lambda x:x in table_score_complete.columns,table_additional.columns))
-                if len(duplicatecols)>0:
-                    table_additional.drop(duplicatecols,axis=1,inplace=True)
+                duplicatecols = list(filter(lambda x: x in table_score_complete.columns, table_additional.columns))
+                if len(duplicatecols) > 0:
+                    table_additional.drop(duplicatecols, axis=1, inplace=True)
 
                 # we join the two tables to have a complete view of the score
                 table_score_complete = table_score_complete.join(table_additional, how='left')
@@ -255,13 +253,13 @@ class Scorer:
         if on_cols is None:
             return table
 
-        compared_cols=on_cols.copy()
+        compared_cols = on_cols.copy()
         if type(compared_cols) == str:
-            compared_cols=[compared_cols]
-        assert isinstance(compared_cols,list)
+            compared_cols = [compared_cols]
+        assert isinstance(compared_cols, list)
 
         for c in compared_cols:
-            assert isinstance(c,str)
+            assert isinstance(c, str)
             colname = c + suffix
             if pd.isnull(query[c]):
                 table[colname] = None
@@ -279,9 +277,9 @@ def _unpack_scoredict(scoredict):
     Returns:
         list,list : input_cols, output_cols
     """
-    #TODO : Add docstring
+    # TODO : Add docstring
     outputcols = []
-    inputcols=[]
+    inputcols = []
 
     for d in ['all', 'any']:
         if scoredict.get(d) is not None:
@@ -298,7 +296,7 @@ def _unpack_scoredict(scoredict):
             for c in scoredict[k]:
                 inputcols.append(c)
                 outputcols.append(c + scorename[k])
-    return inputcols,outputcols
+    return inputcols, outputcols
 
 
 def _checkdict(inputdict, mandatorykeys, existinginput=None):
@@ -324,10 +322,11 @@ def _checkdict(inputdict, mandatorykeys, existinginput=None):
                 if existinginput is None:
                     mydict[c] = inputdict[c].copy()
                 else:
-                    mydict[c] = [v for v in inputdict[c] if not v in existinginput]
+                    mydict[c] = [v for v in inputdict[c] if v not in existinginput]
     return mydict
 
-def _calculatescoredict(existing_cols,used_cols):
+
+def _calculatescoredict(existing_cols, used_cols):
     """
     From a set of existing comparison columns and needed columns, calculate the scoring dict that is needed to
     close the gap
@@ -338,32 +337,32 @@ def _calculatescoredict(existing_cols,used_cols):
     Returns:
         dict: scoredict-type
     """
-    x=list(filter(lambda x: x not in existing_cols,used_cols))
-    m={}
+    x = list(filter(lambda x: x not in existing_cols, used_cols))
+    m = {}
+
     def _findscoreinfo(c):
         if c.endswith('_row') or c.endswith('_query'):
-            k='attributes'
-            u=nm.rmv_end_str(c,'_row')
-            return k,u
+            k = 'attributes'
+            u = nm.rmv_end_str(c, '_row')
+            return k, u
         elif c.endswith('score'):
-            u=nm.rmv_end_str(c,'score')
-            for k in ['fuzzy','token','exact','acronym']:
-                if u.endswith('_'+k):
-                    u=nm.rmv_end_str(u,'_'+k)
-                    return k,u
+            u = nm.rmv_end_str(c, 'score')
+            for k in ['fuzzy', 'token', 'exact', 'acronym']:
+                if u.endswith('_' + k):
+                    u = nm.rmv_end_str(u, '_' + k)
+                    return k, u
         else:
             return None
+
     for c in x:
-        result=_findscoreinfo(c)
+        result = _findscoreinfo(c)
         if result is not None:
-            method,column = result[0],result[1]
+            method, column = result[0], result[1]
             if m.get(method) is None:
-                m[method]=[column]
+                m[method] = [column]
             else:
-                m[method]=list(set(m[method]+[column]))
-    if len(m)>0:
+                m[method] = list(set(m[method] + [column]))
+    if len(m) > 0:
         return m
     else:
         return None
-
-

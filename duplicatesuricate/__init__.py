@@ -1,5 +1,6 @@
-# from .rfmodel import RFLinker
-# from .deduplication import Launcher
+from .deduplication import Launcher,RecordLinker
+from .evaluation import funcmodel
+
 # from .configdir import configfile
 # import pandas as pd
 #

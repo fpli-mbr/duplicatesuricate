@@ -9,16 +9,14 @@ from .scoring import Scorer
 class Launcher:
     def __init__(self, input_records,
                  target_records,
-                 scorer,
-                 evaluator,
+                 linker,
                  cleanfunc=None,
                  idcol='groupid', queryidcol='queryid', verbose=True):
         """
         Args:
             input_records (pd.DataFrame): Input table for record linkage, records to link
             target_records (pd.DataFrame): Table of reference for record linkage
-            scorer (Scorer):
-            evaluator:
+            linker (RecordLinker): record linked
             cleanfunc (func):
             idcol (str): name of the column where to store the deduplication results
             queryidcol (str): name of the column used to store the original match
@@ -45,7 +43,8 @@ class Launcher:
         #TODO: add the possibility of having a group id
         #TODO: Re arrange with Record Linker
 
-        self.linker = RecordLinker(df=target_records, scorer=scorer, evaluator=evaluator)
+        self.linker =linker
+
         if cleanfunc is None:
             cleanfunc = lambda x:x
 

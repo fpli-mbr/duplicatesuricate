@@ -1,6 +1,7 @@
 import pandas as pd
 from duplicatesuricate.deduplication.scoring import Scorer
-from duplicatesuricate.deduplication.scoring import _checkdict,_unpack_scoredict,_calculatescoredict,scorename,scoringkeys
+from duplicatesuricate.deduplication.scoring import _checkdict, _unpack_scoredict, _calculatescoredict, scoringkeys
+
 
 class RecordLinker:
     def __init__(self,
@@ -34,21 +35,21 @@ class RecordLinker:
         self.query = pd.Series()
 
         self.evaluationmodel = evaluator
-        self.evaluation_cols=self.evaluationmodel.used_cols
+        self.evaluation_cols = self.evaluationmodel.used_cols
 
         self.compared_cols = []
-        self.scorecols=[]
-        self.filterdict = None
-        self.intermediate_score = None
-        self.intermediate_function=None
-        self.further_score = None
+        self.scorecols = []
+        self.filterdict = {}
+        self.intermediate_score = {}
+        self.intermediate_function = None
+        self.further_score = {}
 
         self._calculate_scoredict(filterdict=filterdict,
                                   intermediatethreshold=intermediate_thresholds,
                                   used_cols=self.evaluation_cols)
 
         if intermediate_thresholds is not None:
-            decision_int_func = lambda r:threshold_based_decision(r=r,thresholds=intermediate_thresholds)
+            decision_int_func = lambda r: threshold_based_decision(r=r, thresholds=intermediate_thresholds)
         else:
             decision_int_func = None
 
@@ -62,15 +63,15 @@ class RecordLinker:
 
         self.decision_threshold = decision_threshold
 
-        self.evaluation_cols=self.evaluationmodel.used_cols
-        self.compared_cols=self.scoringmodel.compared_cols
+        self.evaluation_cols = self.evaluationmodel.used_cols
+        self.compared_cols = self.scoringmodel.compared_cols
 
-        missingcols=list(filter(lambda x: x not in self.scoringmodel.scorecols, self.evaluationmodel.used_cols))
+        missingcols = list(filter(lambda x: x not in self.scoringmodel.scorecols, self.evaluationmodel.used_cols))
         if len(missingcols) > 0:
-            raise KeyError('not all training columns are found in the output of the scorer:',missingcols)
+            raise KeyError('not all training columns are found in the output of the scorer:', missingcols)
         pass
 
-    def _calculate_scoredict(self,filterdict,intermediatethreshold,used_cols):
+    def _calculate_scoredict(self, filterdict, intermediatethreshold, used_cols):
         self.compared_cols = []
         self.scorecols = []
 
@@ -82,28 +83,29 @@ class RecordLinker:
         else:
             self.filterdict = None
 
-        score_intermediate = _calculatescoredict(existing_cols=self.scorecols,used_cols=list(intermediatethreshold.keys()))
+        score_intermediate = _calculatescoredict(existing_cols=self.scorecols,
+                                                 used_cols=list(intermediatethreshold.keys()))
         if score_intermediate is not None:
             self.intermediate_score = _checkdict(score_intermediate, mandatorykeys=scoringkeys,
                                                  existinginput=self.scorecols)
-            incols,outcols= _unpack_scoredict(self.intermediate_score)
-            self.compared_cols+=incols
-            self.scorecols+=outcols
+            incols, outcols = _unpack_scoredict(self.intermediate_score)
+            self.compared_cols += incols
+            self.scorecols += outcols
         else:
             self.intermediate_score = None
 
-        score_further=_calculatescoredict(existing_cols=self.scorecols,used_cols=used_cols)
+        score_further = _calculatescoredict(existing_cols=self.scorecols, used_cols=used_cols)
 
         if score_further is not None:
             self.further_score = _checkdict(score_further, mandatorykeys=scoringkeys, existinginput=self.scorecols)
-            incols,outcols= _unpack_scoredict(self.further_score)
-            self.compared_cols+=incols
-            self.scorecols+=outcols
+            incols, outcols = _unpack_scoredict(self.further_score)
+            self.compared_cols += incols
+            self.scorecols += outcols
         else:
             self.further_score = None
         pass
 
-    def return_good_matches(self, query,decision_threshold=None):
+    def return_good_matches(self, query, decision_threshold=None):
         """
         Return the good matches
         - with the help of the scoring model, create a similarity table
@@ -120,7 +122,7 @@ class RecordLinker:
         if decision_threshold is None:
             decision_threshold = self.decision_threshold
 
-        y_bool = self.predict(query,decision_threshold=decision_threshold)
+        y_bool = self.predict(query, decision_threshold=decision_threshold)
 
         if y_bool is None:
             return None
@@ -128,7 +130,7 @@ class RecordLinker:
             goodmatches = y_bool.loc[y_bool].index
             return goodmatches
 
-    def predict(self, query,decision_threshold=None):
+    def predict(self, query, decision_threshold=None):
         """
         Predict if it is a match or not.
         - with the help of the scoring model, create a similarity table
@@ -151,11 +153,11 @@ class RecordLinker:
         if y_proba is None:
             return None
         else:
-            assert isinstance(y_proba,pd.Series)
+            assert isinstance(y_proba, pd.Series)
             # transform that probability in a boolean via a decision threshold
             # noinspection PyTypeChecker
             y_bool = (y_proba > decision_threshold)
-            assert isinstance(y_bool,pd.Series)
+            assert isinstance(y_bool, pd.Series)
 
             return y_bool
 
@@ -202,7 +204,7 @@ def threshold_based_decision(r, thresholds):
         float
 
     """
-    r=r.fillna(0)
+    r = r.fillna(0)
     for k in list(thresholds.keys()):
         if r[k] < thresholds[k]:
             return 0
