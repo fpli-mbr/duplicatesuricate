@@ -62,6 +62,8 @@ class Launcher:
         self.idcol = idcol
         self.queryidcol = queryidcol
         self.verbose = verbose
+
+        self._results={}
         pass
 
 
@@ -110,12 +112,13 @@ class Launcher:
         else:
             return goodmatches_index[:n_matches_max]
 
-    def start_linkage(self, in_index=None, n_matches_max=1):
+    def start_linkage(self, sample_size=10,in_index=None, n_matches_max=1):
         """
         Takes as input an index of the input records, and returns a dict showing their corresponding matches
         on the target records
         Args:
             in_index (pd.Index): index of the records (from input_records) to be deduplicated
+            sample_size (int): number of records to be deduplicated. If 'all' is provided, deduplicaate all
             n_matches_max (int): maximum number of possible matches to be returned.
                 If none, all matches would be returned
 
@@ -125,14 +128,15 @@ class Launcher:
         if in_index is None:
             in_index = self.input_records.index
 
-        n_total = len(in_index)
+        if sample_size == 'all' or sample_size is None:
+            n_total = self.input_records.shape[0]
+        else:
+            n_total = sample_size
 
-        #TODO: find why I wrote that...
-        #if find_missing_keys_in_index(in_index, self.input_records.index) is True:
-        #    raise KeyError('in_index called is not contained in input_records index')
+        in_index=in_index[:n_total]
 
         print('starting deduplication at {}'.format(pd.datetime.now()))
-        results = {}
+        self._results = {}
         for i, ix in enumerate(in_index):
             # timing
             time_start = pd.datetime.now()
@@ -140,25 +144,25 @@ class Launcher:
             goodmatches_index = self._find_matches_(query_index=ix, n_matches_max=n_matches_max)
 
             if goodmatches_index is None:
-                results[ix] = None
+                self._results[ix] = None
                 n_deduplicated = 0
             else:
-                results[ix] = list(goodmatches_index)
-                n_deduplicated = len(results[ix])
+                self._results[ix] = list(goodmatches_index)
+                n_deduplicated = len(self._results[ix])
 
             # timing
             time_end = pd.datetime.now()
             duration = (time_end - time_start).total_seconds()
 
             if self.verbose:
-                print('{} of {} deduplicated | time elapsed {} s'.format(n_deduplicated, n_total, duration))
+                print('{} of {} deduplicated | found {} time elapsed {} s'.format(i, n_total,n_deduplicated, duration))
 
         print('finished work at {}'.format(pd.datetime.now()))
         if n_matches_max == 1:
             convertlisttovalue=lambda v:None if v is None else v[0]
-            for k in results.keys():
-                results[k]=convertlisttovalue(results[k])
-        return results
+            for k in self._results.keys():
+                self._results[k]=convertlisttovalue(self._results[k])
+        return self._results
 
     def format_results(self, res, display, fuzzy=None):
         """
@@ -184,6 +188,8 @@ class Launcher:
         df.reset_index(inplace=True,drop=False)
         df.rename(columns={'index': 'ix_source'}, inplace=True)
         df.dropna(inplace=True)
+        if df.shape[0]==0:
+            return None
 
         if fuzzy is None:
             allcols=display

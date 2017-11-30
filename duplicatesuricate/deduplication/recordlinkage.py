@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+
 from duplicatesuricate.deduplication.scoring import Scorer
 from duplicatesuricate.deduplication.scoring import _checkdict, _unpack_scoredict, _calculatescoredict, scoringkeys
 
@@ -49,7 +51,7 @@ class RecordLinker:
                                   used_cols=self.evaluation_cols)
 
         if intermediate_thresholds is not None:
-            decision_int_func = lambda r: threshold_based_decision(r=r, thresholds=intermediate_thresholds)
+            decision_int_func = lambda r: threshold_based_decision(row=r, thresholds=intermediate_thresholds)
         else:
             decision_int_func = None
 
@@ -83,8 +85,10 @@ class RecordLinker:
         else:
             self.filterdict = None
 
+
         score_intermediate = _calculatescoredict(existing_cols=self.scorecols,
-                                                 used_cols=list(intermediatethreshold.keys()))
+                                            used_cols=list(intermediatethreshold.keys()))
+
         if score_intermediate is not None:
             self.intermediate_score = _checkdict(score_intermediate, mandatorykeys=scoringkeys,
                                                  existinginput=self.scorecols)
@@ -105,7 +109,7 @@ class RecordLinker:
             self.further_score = None
         pass
 
-    def return_good_matches(self, query, decision_threshold=None):
+    def return_good_matches(self, query, decision_threshold=None, on_index=None,n_matches_max=1):
         """
         Return the good matches
         - with the help of the scoring model, create a similarity table
@@ -122,15 +126,19 @@ class RecordLinker:
         if decision_threshold is None:
             decision_threshold = self.decision_threshold
 
-        y_bool = self.predict(query, decision_threshold=decision_threshold)
+        y_bool = self.predict(query, decision_threshold=decision_threshold, on_index=on_index)
 
         if y_bool is None:
             return None
         else:
             goodmatches = y_bool.loc[y_bool].index
+            if len(goodmatches)==0:
+                return None
+            else:
+                goodmatches=goodmatches[:max(n_matches_max,len(goodmatches))]
             return goodmatches
 
-    def predict(self, query, decision_threshold=None):
+    def predict(self, query, decision_threshold=None, on_index=None):
         """
         Predict if it is a match or not.
         - with the help of the scoring model, create a similarity table
@@ -149,7 +157,7 @@ class RecordLinker:
             decision_threshold = self.decision_threshold
 
         # calculate the probability of the records being the same as the query through the machine learning evaluation
-        y_proba = self.predict_proba(query)
+        y_proba = self.predict_proba(query, on_index=on_index)
         if y_proba is None:
             return None
         else:
@@ -161,7 +169,7 @@ class RecordLinker:
 
             return y_bool
 
-    def predict_proba(self, query):
+    def predict_proba(self, query, on_index=None):
         """
         Main method of this class:
         - with the help of the scoring model, create a similarity table
@@ -176,7 +184,7 @@ class RecordLinker:
 
         """
 
-        table_score_complete = self.scoringmodel.filter_compare(query=query)
+        table_score_complete = self.scoringmodel.filter_compare(query=query,on_index=on_index)
 
         if table_score_complete is None or table_score_complete.shape[0] == 0:
             return None
@@ -192,21 +200,136 @@ class RecordLinker:
 
             return y_proba
 
+    def _showprobablematches(self, query, n_records=10, display=None):
+        """
 
-def threshold_based_decision(r, thresholds):
+        Args:
+            query (pd.Series):
+            n_records (int):
+            display (list):
+
+        Returns:
+            pd.DataFrame
+
+        """
+        if display is None:
+            display = self.compared_cols
+        records = pd.DataFrame(columns=['proba']+display)
+        records.loc[0]=query[display].copy()
+        records.rename(index={0:'query'},inplace=True)
+        records.loc['query','proba']='query'
+
+        y_proba=self.predict_proba(query)
+        if y_proba is not None and y_proba.shape[0]>0:
+            print(y_proba.max())
+            y_proba.sort_values(ascending=False,inplace=True)
+            n_records = min(n_records, y_proba.shape[0])
+            results=self.df.loc[y_proba.index[:n_records], display]
+            results['proba']=y_proba
+            records = pd.concat([records,results],axis=0)
+            return records
+        else:
+            return None
+
+    def _showfilterstep(self,query,n_records=10,display=None):
+        """
+
+        Args:
+            query (pd.Series):
+            n_records (int):
+            display (list):
+
+        Returns:
+            pd.DataFrame
+
+        """
+        if display is None:
+            display = self.compared_cols
+        records = pd.DataFrame(columns=['totalscore']+display)
+        records.loc[0]=query[display].copy()
+        records.rename(index={0:'query'},inplace=True)
+        records.loc['query', 'totalscore'] = 'query'
+
+        table=self.scoringmodel.filter_all_any(query=query)
+        if table is not None and table.shape[0]>0:
+            y_sum = table.sum(axis=1)
+            print(y_sum.max())
+            print(y_sum.max())
+            y_sum.sort_values(ascending=False,inplace=True)
+            n_records = min(n_records, y_sum.shape[0])
+            results=self.df.loc[y_sum.index[:n_records], display]
+            results['totalscore']=y_sum
+            records = pd.concat([records,results],axis=0)
+            return records
+        else:
+            return None
+
+    def _showscoringstep(self,query,n_records=10,display=None):
+        """
+
+        Args:
+            query (pd.Series):
+            n_records (int):
+            display (list):
+
+        Returns:
+            pd.DataFrame
+
+        """
+        if display is None:
+            display = self.compared_cols
+        records = pd.DataFrame(columns=['totalscore']+display)
+        records.loc[0]=query[display].copy()
+        records.rename(index={0:'query'},inplace=True)
+        records.loc['query', 'totalscore'] = 'query'
+
+        table = self.scoringmodel.filter_compare(query=query)
+
+
+        if table is not None and table.shape[0]>0:
+            y_sum = table.sum(axis=1)
+            print(y_sum.max())
+            y_sum.sort_values(ascending=False,inplace=True)
+            n_records = min(n_records, y_sum.shape[0])
+            results=self.df.loc[y_sum.index[:n_records], display]
+            results['totalscore']=y_sum
+            records = pd.concat([records,results],axis=0)
+
+            return records
+        else:
+            return None
+
+
+def threshold_based_decision(row, thresholds):
     """
     if all values of the row are above the thresholds, return 1, else return 0
     Args:
-        r (pd.Series): row to be decided
+        row (pd.Series): row to be decided
         thresholds (dict): threshold of values
 
     Returns:
         float
 
     """
-    r = r.fillna(0)
-    for k in list(thresholds.keys()):
-        if r[k] < thresholds[k]:
-            return 0
+    #TODO: Explain how this works
+    navalue = thresholds.get('fillna')
+    if navalue is None:
+        navalue = 0
+    elif navalue =='dropna':
+        row = row.dropna()
+    row = row.fillna(navalue)
+
+    aggfunc = thresholds.get('aggfunc')
+
+    if aggfunc == 'all':
+        f=all
+    elif aggfunc == 'any':
+        f= any
     else:
-        return 1
+        f=all
+    keys=thresholds.keys()
+    keys=filter(lambda k:k.endswith('score'),keys)
+    result = map(lambda k:row[k]>=thresholds[k],list(keys))
+    result = f(result)
+
+    return result

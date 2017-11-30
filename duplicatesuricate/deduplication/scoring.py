@@ -55,7 +55,7 @@ class Scorer:
 
         pass
 
-    def filter_all_any(self, query, on_index, filterdict):
+    def filter_all_any(self, query, on_index=None, filterdict=None):
         """
         returns a pre-filtered table score calculated on the column names provided in the filterdict.
         in the values for 'any': a match on any of these columns ensure the row is kept for further analysis
@@ -71,6 +71,10 @@ class Scorer:
             pd.DataFrame: a DataFrame with the exact score of the columns provided in the filterdict
         """
         table = pd.DataFrame(index=on_index)
+        if on_index is None:
+            on_index = self.df.index
+        if filterdict is None:
+            filterdict = self.filterdict
 
         if filterdict is None:
             return table
@@ -81,7 +85,10 @@ class Scorer:
         if match_all_cols is None and match_any_cols is None:
             return table
 
+
+
         df = self.df.loc[on_index]
+
 
         if match_any_cols is not None:
             match_any_df = pd.DataFrame(index=on_index)
@@ -112,13 +119,12 @@ class Scorer:
         results = (allcriteriasmatch | anycriteriasmatch)
 
         assert isinstance(table, pd.DataFrame)
-
         return table.loc[results]
 
     def build_similarity_table(self,
                                query,
-                               on_index,
-                               scoredict):
+                               on_index=None,
+                               scoredict=None):
         """
         Return the similarity features between the query and the rows in the required index, with the selected comparison functions.
         They can be fuzzy, token-based, exact, or acronym.
@@ -142,6 +148,16 @@ class Scorer:
                 ['name_len_query','name_len_row','name_fuzzyscore','street_fuzzyscore',
                 'name_tokenscore','id_exactscore','name_acronymscore']
         """
+        if on_index is None:
+            on_index = self.df.index
+        if scoredict is None:
+            if self.intermediate_score is not None:
+                scoredict = self.intermediate_score.copy()
+                if self.further_score is not None:
+                    scoredict = scoredict.update((self.further_score.copy()))
+            else:
+                scoredict=self.further_score.copy()
+
 
         table_score = pd.DataFrame(index=on_index)
 
@@ -158,7 +174,7 @@ class Scorer:
 
         return table_score
 
-    def filter_compare(self, query):
+    def filter_compare(self, query,on_index=None):
         """
         Simultaneously create a similarity table and filter the data.
         It works in three steps:
@@ -176,7 +192,10 @@ class Scorer:
         """
 
         # pre filter the records for further scoring based on an all / any exact match
-        workingindex = self.df.index
+        if on_index is None:
+            workingindex = self.df.index
+        else:
+            workingindex = on_index
 
         table_score_complete = self.filter_all_any(query=query,
                                                    on_index=workingindex,
