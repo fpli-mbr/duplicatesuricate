@@ -85,10 +85,7 @@ class Scorer:
         if match_all_cols is None and match_any_cols is None:
             return table
 
-
-
         df = self.df.loc[on_index]
-
 
         if match_any_cols is not None:
             match_any_df = pd.DataFrame(index=on_index)
@@ -156,8 +153,7 @@ class Scorer:
                 if self.further_score is not None:
                     scoredict = scoredict.update((self.further_score.copy()))
             else:
-                scoredict=self.further_score.copy()
-
+                scoredict = self.further_score.copy()
 
         table_score = pd.DataFrame(index=on_index)
 
@@ -174,7 +170,7 @@ class Scorer:
 
         return table_score
 
-    def filter_compare(self, query,on_index=None):
+    def filter_compare(self, query, on_index=None):
         """
         Simultaneously create a similarity table and filter the data.
         It works in three steps:
@@ -289,14 +285,26 @@ class Scorer:
 
 def _unpack_scoredict(scoredict):
     """
-    a list of scoring functions to be applied
+    Calculate, from the scoredict, two lists:
+    - the list of the names of columns on which the scoring is performeed
+    - the list of the names of the scoring columns
+
+    The names of the keys can be : 'all','any'
+    - 'all','any': used only in the filter_all_any method
+    - 'attributes':
+    - 'fuzzy','token','exact','acronym': four kinds of comparison.
     Args:
-        scoredict (dict):
+        scoredict (dict): of the type {'fuzzy':['name','street'],'exact':['id'],'token':None}.\
+        Should be of the form key:[list] or key:None.
 
     Returns:
         list,list : input_cols, output_cols
+    Examples:
+        _unpack_scoredict({'fuzzy':['name','street'],'exact':['id'],'token':None,'attributes':['name_len'],
+        all=['id','id2']}):
+        returns ['name','street','id','name_len','id2'],['name_fuzzyscore','street_fuzzyscore','id_exactscore','id2_exactscore','name_len_query','name_len_row']
     """
-    # TODO : Add docstring
+
     outputcols = []
     inputcols = []
 
@@ -347,14 +355,17 @@ def _checkdict(inputdict, mandatorykeys, existinginput=None):
 
 def _calculatescoredict(existing_cols, used_cols):
     """
-    From a set of existing comparison columns and needed columns, calculate the scoring dict that is needed to
-    close the gap
+    From a set of existing comparison columns and columns needed for a decision function,
+    calculate the scoring dict that is needed for the scorer to calculate all the needed columns.
     Args:
-        existing_cols (list):
-        used_cols (list):
+        existing_cols (list): list of existing columns that are already calculated.
+        used_cols (list): list of columns needed for the decision function.
 
     Returns:
         dict: scoredict-type
+    Examples:
+        _calculatescoredict(['name_fuzzyscore'],['name_fuzzyscore','id_exactscore']
+        returns {'exact':'id'}
     """
     x = list(filter(lambda x: x not in existing_cols, used_cols))
     m = {}
