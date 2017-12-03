@@ -27,13 +27,12 @@ class Scorer:
         - those three steps are meshed together in the filter_compare method
         Args:
             df (pd.DataFrame): reference records
-            filterdict (dict):
-            score_intermediate (dict):
-            decision_intermediate (func):
-            score_further (dict):
+            filterdict (dict): define the all/any logic used detailed in filter_all_any
+            score_intermediate (dict): create the intermediate scoring table using a scoredict detailed in _unpackscoredict
+            decision_intermediate (func): take a decision: function takes as input a row of the scoring table and returns a boolean
+            score_further (dict): creates the additional scoring fields using a scoredict
             fillna (float): Value used to fill the na values
         """
-        # TODO : docstring of scorer class
 
         self.df = df
         self.scorecols = []
