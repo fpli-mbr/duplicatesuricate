@@ -18,9 +18,15 @@ class Scorer:
     def __init__(self, df, filterdict=None, score_intermediate=None, decision_intermediate=None, score_further=None,
                  fillna=-1):
         """
-
+        This class is used to calculate similarity tables between a reference table and a possible query.
+        It has three main steps in proceeding:
+        - filter based on an all / any logic (filter_all_any)
+        - calculate an intermediate score using  build_similarity_table
+        - takes an intermediate decision function
+        - if the decision function is positive, calculate further scores using  build_similarity_table
+        - those three steps are meshed together in the filter_compare method
         Args:
-            df (pd.DataFrame: reference records
+            df (pd.DataFrame): reference records
             filterdict (dict):
             score_intermediate (dict):
             decision_intermediate (func):
@@ -328,14 +334,15 @@ def _unpack_scoredict(scoredict):
 
 def _checkdict(inputdict, mandatorykeys, existinginput=None):
     """
-
+    Takes as in input a dictionnary, and re-format it in order to have all mandatory keys, and by filtering out the values
+    already containted in the existing input
     Args:
-        inputdict (dict):
-        mandatorykeys (list):
-        existinginput (list):
+        inputdict (dict): source dictionnary
+        mandatorykeys (list): list of names
+        existinginput (list): list of already existing names
 
     Returns:
-
+        dict
     """
     mydict = {}
     if inputdict is None:
