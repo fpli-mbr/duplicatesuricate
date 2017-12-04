@@ -24,13 +24,16 @@ class RecordLinker:
 
         Args:
             df (pd.DataFrame): target records
-            filterdict (dict):
-            intermediate_thresholds (dict):
-            fillna (float):
+            filterdict (dict): filtering dict with exact matches on an {'all':['country'],'any':[id1,id2]}
+            intermediate_thresholds (dict): minimum threshold for intermediate scoring
+            fillna (float): value with which to fill na values
             evaluator : Class used to calculate a probability vector. Has .predict_proba function
             decision_threshold (float), default 0.8
             verbose (bool): control print output
         """
+
+        #TODO: update intermediate_threshold documentation
+
         self.verbose = verbose
 
         self.df = df
@@ -202,14 +205,15 @@ class RecordLinker:
 
     def _showprobablematches(self, query, n_records=10, display=None):
         """
-
+        Show the best matching recors after the filter_all_any method of the scorer
+        Could be of interest to investigate the possible matches of a query
         Args:
             query (pd.Series):
-            n_records (int):
-            display (list):
+            n_records (int): max number of records to be displayed
+            display (list): list of columns to be displayed
 
         Returns:
-            pd.DataFrame
+            pd.DataFrame, incl. query
 
         """
         if display is None:
@@ -277,7 +281,7 @@ class RecordLinker:
             display (list): list of columns to be displayed
 
         Returns:
-            pd.DataFrame, incl query
+            pd.DataFrame, incl queryK
 
         """
         if display is None:
