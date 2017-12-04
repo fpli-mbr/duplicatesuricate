@@ -233,14 +233,16 @@ class RecordLinker:
 
     def _showfilterstep(self,query,n_records=10,display=None):
         """
-
+        Not used anymore
+        Show the best matching recors after the filter_all_any method of the scorer
+        Could be of interest to investigate the possible matches of a query
         Args:
             query (pd.Series):
-            n_records (int):
-            display (list):
+            n_records (int): max number of records to be displayed
+            display (list): list of columns to be displayed
 
         Returns:
-            pd.DataFrame
+            pd.DataFrame, incl query
 
         """
         if display is None:
@@ -266,14 +268,16 @@ class RecordLinker:
 
     def _showscoringstep(self,query,n_records=10,display=None):
         """
-
+        Not used anymore
+        Show the total score of the scoring table after the filter_compare method of the scorer
+        Could be of interest to investigate the possible matches of a query
         Args:
             query (pd.Series):
-            n_records (int):
-            display (list):
+            n_records (int): max number of records to be displayed
+            display (list): list of columns to be displayed
 
         Returns:
-            pd.DataFrame
+            pd.DataFrame, incl query
 
         """
         if display is None:
