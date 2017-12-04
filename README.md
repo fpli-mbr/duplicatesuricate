@@ -1,3 +1,5 @@
+#TODO: re-write sample
+
 # Duplicate Suricate
 This is an entity resolution algorithm (to deduplicate records of companies for example) using available information: Company name, street address, city name, Duns Number, Postal Code, Country, and Lat/Lng location derived from Google Maps.
 It relies heavily on:
