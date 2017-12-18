@@ -112,7 +112,7 @@ class Launcher:
         else:
             return goodmatches_index[:n_matches_max]
 
-    def start_linkage(self, sample_size=10,in_index=None, n_matches_max=1):
+    def start_linkage(self, sample_size=10,in_index=None, n_matches_max=1) -> dict:
         """
         Takes as input an index of the input records, and returns a dict showing their corresponding matches
         on the target records
@@ -164,13 +164,14 @@ class Launcher:
                 self._results[k]=convertlisttovalue(self._results[k])
         return self._results
 
-    def format_results(self, res, display, fuzzy=None):
+    def format_results(self, res, display, fuzzy=None,ids=None):
         """
         Return a formatted, side by side comparison of results
         Args:
             res (dict): results
             display (list): list of columns to be displayed
             fuzzy (list): list of columns on which to perform fuzzy score
+            ids (list): list of columns on which to calculate the number of exact_matching
         Returns:
             pd.DataFrame
         """
@@ -201,4 +202,21 @@ class Launcher:
         if fuzzy is not None:
             for c in fuzzy:
                 df[c+'_score']=df.apply(lambda r:nm.compare_twostrings(r[c+'_source'],r[c+'_target']),axis=1)
+
+        if ids is not None:
+            y=pd.DataFrame(index=df.index)
+            for c in ids:
+                #Make sure columns or in the table
+                for s in ['_source','_target']:
+                    colname= (c+s)
+                    if colname not in df.columns:
+                        if s=='_source':
+                            df[colname]=df['ix'+s].apply(lambda r: self.input_records.loc[r, c])
+                        elif s =='_target':
+                            df[colname] = df['ix' + s].apply(lambda r: self.target_records.loc[r, c])
+                #Calculate the score
+                y[c+'_exact_Score']=df.apply(lambda r:nm.exactmatch(r[c+'_source'],r[c+'_target']),axis=1)
+            #after the loop, take the mast of the score
+            df['n_ids_matching']=y.fillna(0).sum(axis=1)
+
         return df
