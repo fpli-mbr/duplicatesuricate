@@ -9,10 +9,12 @@ import duplicatesuricate.preprocessing.companycleaning as cc
 
 
 filepath='C:/_PYDAI/1-Data/3-Deduplication P11-F40/'
-filename_target='f40_lfa1.xlsx'
-filename_out='f40_doublons.xlsx' 
+filename_target='input_f40.xlsx'
+filename_out='f40_doublons 20171207.xlsx'
 
-df_target = pd.read_excel(filepath+filename_target,index_col=0)
+df_target = pd.read_excel(filepath+filename_target)
+df_target['companysysid']='F40'+df_target['LIFNR']
+df_target.set_index('companysysid',inplace=True)
 
 print(df_target.columns)
 
@@ -22,6 +24,7 @@ coldict={'duns':'KRAUS',
  'name':'NAME1',
  'street':'STRAS',
         'countrycode':'LAND1'}
+
 namecol=coldict['name']
 streetcol=coldict['street']
 
@@ -59,7 +62,11 @@ target_records=cleanfunc(df_target,coldict)
 #define first filter
 filter_all_any={'all':[coldict['countrycode']],'any':id_cols}
 #Define intermediate threshold before further filtering
-int_threshold={streetcol+'_wostopwords_fuzzyscore':0.5,namecol+'_wostopwords_fuzzyscore':0.5,'aggfunc':'any'}
+int_threshold={streetcol+'_wostopwords_fuzzyscore':0.6,
+               namecol+'_wostopwords_fuzzyscore':0.6,
+            streetcol+'_fuzzyscore':0.6,
+            namecol+'_fuzzyscore':0.6,
+               'aggfunc':'any'}
 
 #Define evaluation model, do not forget the used scores
 streetscores=[streetcol+'_wostopwords_fuzzyscore']
@@ -100,21 +107,24 @@ for ix in unexplored:
                 if r[0] in unexplored:
                     unexplored=unexplored.drop(r[0])
 print('deduplication achieved')
+displaycols = ['LIFNR', 'NAME1', 'STRAS', 'PSTLZ', 'ORT01', 'LAND1', 'KRAUS', 'STCD2',
+               'STCD1', 'STCEG', 'VBUND']
 if results.shape[0]>0:
-    pd.DateFrame(results).to_excel(filepath+filename_out) 
+    pd.DataFrame(results).to_excel(filepath+filename_out)
+    Lch = Launcher(input_records=df_target, target_records=df_target, linker=rl)
+    rsd = results.to_dict()
+    assert isinstance(rsd, dict)
+    df = Lch.format_results(res=rsd, fuzzy=[namecol, streetcol],
+                            display=displaycols)
+    df.to_excel(filepath + 'f40sidebyside.xlsx')
+    df_target[list(set(rl.compared_cols + displaycols))].drop(index=results.index).to_excel(
+        filepath + 'newf40.xlsx')
 else:
-    print('no duplicates')    
+    print('no duplicates')
+    df_target[list(set(rl.compared_cols + displaycols))].to_excel(
+    filepath + 'newf40.xlsx')
 
-#%%
-for i in range(10):
-    x= rl.df.loc[[results.iloc[i],results.index[i]]]
-    x=x[rl.compared_cols]
-    print(x)      
-#%%
-Lch = Launcher(input_records=df_target,target_records=df_target,linker=rl)
-df=Lch.format_results(res=results.to_dict(),fuzzy=[namecol,streetcol],display=[namecol,streetcol]+id_cols)
-df.to_excel(filepath+'f40sidebyside.xlsx')
-df_target[rl.compared_cols+[namecol,streetcol]].drop(index=results.index).to_excel(filepath+'newf40.xlsx')
+
 #%%
 #y=rl.predict_proba(query)
 #print(y.max())

@@ -9,7 +9,7 @@ import duplicatesuricate.preprocessing.companycleaning as cc
 
 
 filepath='C:/_PYDAI/1-Data/3-Deduplication P11-F40/'
-filename_input='newf40.xlsx'
+filename_input='input_F40.xlsx'
 filename_target='p11_md2.csv'
 filename_out='f40_to_p11_' #+timeextract
 
@@ -83,7 +83,7 @@ input_records=cleanfunc(df_input,coldict)
 #define first filter
 filter_all_any={'all':[coldict['countrycode']],'any':id_cols}
 #Define intermediate threshold before further filtering
-int_threshold={streetcol+'_wostopwords_fuzzyscore':0.5,'aggfunc':'any'}
+int_threshold={streetcol+'_wostopwords_fuzzyscore':0.5,namecol+'_wostopwords_fuzzyscore':0.5,'aggfunc':'any'}
 
 #Define evaluation model, do not forget the used scores
 streetscores=[streetcol+'_wostopwords_fuzzyscore']
@@ -111,9 +111,15 @@ rl = RecordLinker(df=df_target,filterdict=filter_all_any,
 Lch = Launcher(input_records=df_input,target_records=df_target,linker=rl)
 #%%
 results=Lch.start_linkage(sample_size='all')
+
 #%%
-df=Lch.format_results(results,display=rl.compared_cols+[namecol,streetcol],fuzzy=[streetcol+'_wostopwords',namecol+'_wostopwords'])
-#%%
-timeextract=pd.datetime.now().strftime('%Y%m%d-%H{}%M'.format('h'))
-filename_out=filename_out+timeextract+'.xlsx'
-df.to_excel(filepath+filename_out,index=True)
+displaycols = ['LIFNR', 'NAME1', 'STRAS', 'PSTLZ', 'ORT01', 'LAND1', 'KRAUS', 'STCD2',
+               'STCD1', 'STCEG', 'VBUND']
+if len(results)>0:
+    pd.DataFrame(pd.Series(results)).to_excel(filepath+'results.xlsx')
+    df = Lch.format_results(res=results, fuzzy=[namecol, streetcol],
+                            display=displaycols,ids=id_cols)
+    df.to_excel(filepath + 'f40p11sidebyside.xlsx')
+else:
+    print('no duplicates')
+
