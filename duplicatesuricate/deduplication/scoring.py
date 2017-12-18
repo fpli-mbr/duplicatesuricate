@@ -187,6 +187,7 @@ class Scorer:
             that have been filtered
         Args:
             query (pd.Series): query
+            on_index (pd.Index): index on which to filter and compare
 
         Returns:
             pd.DataFrame similarity table
@@ -373,16 +374,16 @@ def _calculatescoredict(existing_cols, used_cols):
         _calculatescoredict(['name_fuzzyscore'],['name_fuzzyscore','id_exactscore']
         returns {'exact':'id'}
     """
-    x = list(filter(lambda x: x not in existing_cols, used_cols))
-    m = {}
+    x_col = list(filter(lambda x: x not in existing_cols, used_cols))
+    m_dic = {}
 
-    def _findscoreinfo(c):
-        if c.endswith('_row') or c.endswith('_query'):
+    def _findscoreinfo(colname):
+        if colname.endswith('_row') or colname.endswith('_query'):
             k = 'attributes'
-            u = nm.rmv_end_str(c, '_row')
+            u = nm.rmv_end_str(colname, '_row')
             return k, u
-        elif c.endswith('score'):
-            u = nm.rmv_end_str(c, 'score')
+        elif colname.endswith('score'):
+            u = nm.rmv_end_str(colname, 'score')
             for k in ['fuzzy', 'token', 'exact', 'acronym']:
                 if u.endswith('_' + k):
                     u = nm.rmv_end_str(u, '_' + k)
@@ -390,15 +391,15 @@ def _calculatescoredict(existing_cols, used_cols):
         else:
             return None
 
-    for c in x:
+    for c in x_col:
         result = _findscoreinfo(c)
         if result is not None:
             method, column = result[0], result[1]
-            if m.get(method) is None:
-                m[method] = [column]
+            if m_dic.get(method) is None:
+                m_dic[method] = [column]
             else:
-                m[method] = list(set(m[method] + [column]))
-    if len(m) > 0:
-        return m
+                m_dic[method] = list(set(m_dic[method] + [column]))
+    if len(m_dic) > 0:
+        return m_dic
     else:
         return None

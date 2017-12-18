@@ -1,5 +1,6 @@
 import pandas as pd
 
+#TODO : Integrate decision threshold in model
 
 class FuncEvaluationModel:
     """

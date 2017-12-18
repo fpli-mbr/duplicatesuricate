@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 from duplicatesuricate.deduplication.scoring import Scorer
 from duplicatesuricate.deduplication.scoring import _checkdict, _unpack_scoredict, _calculatescoredict, scoringkeys
@@ -27,14 +26,12 @@ class RecordLinker:
         Args:
             df (pd.DataFrame): target records
             filterdict (dict): filtering dict with exact matches on an {'all':['country'],'any':[id1,id2]}
-            intermediate_thresholds (dict): minimum threshold for intermediate scoring
+            intermediate_thresholds (dict): dictionary of minimum thresholds for intermediate scoring
             fillna (float): value with which to fill na values
             evaluator : Class used to calculate a probability vector. Has .predict_proba function
             decision_threshold (float), default 0.8
             verbose (bool): control print output
         """
-
-        #TODO: update intermediate_threshold documentation
 
         self.verbose = verbose
 
@@ -123,6 +120,9 @@ class RecordLinker:
         - return the index of the good matches
         Args:
             query (pd.Series): information available on our query
+            decision_threshold (float): decision_threshold between 0 and 1
+            on_index (pd.Index): index on which to return the records
+            n_matches_max (int): number of matches to be returned
 
         Returns:
             pd.Index: the index of the target records identified as the same as the query by the algorithm
@@ -153,6 +153,7 @@ class RecordLinker:
         Args:
             query (pd.Series): information available on our query
             decision_threshold (float): default None. number between 0 and 1. If not provided, take the default one from the model
+            on_index (pd.Index): index on which to do the prediction
 
         Returns:
             pd.Series: a boolean vector: True if it is a match, false otherwise
@@ -183,6 +184,7 @@ class RecordLinker:
 
         Args:
             query (pd.Series): information available on our query
+            on_index (pd.Index): index on which to do the prediction
 
         Returns:
             pd.Series : the probability vector of the target records being the same as the query
