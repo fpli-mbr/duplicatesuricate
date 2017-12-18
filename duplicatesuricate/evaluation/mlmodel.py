@@ -6,6 +6,44 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
 
+# Config RF Model
+_training_path = '/Users/paulogier/Documents/8-PythonProjects/02-test_suricate/'
+_training_name = 'training_table_prepared_20171107_79319rows.csv'
+training_filename = _training_path + _training_name
+
+
+def load_training_data(path, targetcol='ismatch', sep=',', encoding='utf-8', index_col=None):
+    """
+    Load the training data and return X_train, y_train
+    Args:
+        path (str): path of the training file
+        targetcol (str):  name of the target vector in the training column
+        sep (str): separator, default ','
+        encoding (str): encoding, default 'utf-8'
+        index_col (int): if the first column of the training table is the index, default False
+
+    Returns:
+        pd.DataFrame,pd.Series
+
+    """
+    extension = path.split('.')[-1]
+    if extension == 'csv':
+        df = pd.read_csv(filepath_or_buffer=path, sep=sep, encoding=encoding, index_col=index_col)
+    elif extension in ['xlsx', 'xls']:
+        df = pd.read_excel(path, index_col=index_col)
+    else:
+        raise TypeError('incorrect extension provided')
+    assert isinstance(df, pd.DataFrame)
+
+    if targetcol not in df.columns:
+        raise KeyError(targetcol, ' not in table columns')
+
+    y_train = df[targetcol]
+    x_train = df.drop(targetcol, axis=1)
+    assert isinstance(x_train, pd.DataFrame)
+    assert isinstance(y_train, pd.Series)
+    return x_train, y_train
+
 
 class MLEvaluationModel:
     """
@@ -14,14 +52,14 @@ class MLEvaluationModel:
 
     Examples:
         dm = MLEvaluationModel()
-        x_train,y_train=dm.load('mytrainingdata.csv',targetcol='ismatch')
+        x_train,y_train=dm.load_training_data('mytrainingdata.csv',targetcol='ismatch')
         dm.fit(x_train,y_train)
         x_score = compare(query,target_records) where compare creates a similarity table
         y_proba = dm.predict_proba(x_score)
     """
 
     def __init__(self, verbose=True,
-                 n_estimators=2000,model=None):
+                 n_estimators=2000, model=None):
         """
         Create the model
         Args:
@@ -37,38 +75,6 @@ class MLEvaluationModel:
         self.used_cols = []
 
         pass
-
-    def load(self,path, targetcol='ismatch', sep=',', encoding='utf-8', index_col=None):
-        """
-        load the training data and return X_train, y_train
-        Args:
-            path (str): path of the training file
-            targetcol (str):  name of the target vector in the training column
-            sep (str): separator, default ','
-            encoding (str): encoding, default 'utf-8'
-            index_col (int): if the first column of the training table is the index, default False
-
-        Returns:
-            pd.DataFrame,pd.Series
-
-        """
-        extension = path.split('.')[-1]
-        if extension == 'csv':
-            df = pd.read_csv(filepath_or_buffer=path, sep=sep, encoding=encoding, index_col=index_col)
-        elif extension in ['xlsx', 'xls']:
-            df = pd.read_excel(path, index_col=index_col)
-        else:
-            raise TypeError('incorrect extension provided')
-        assert isinstance(df, pd.DataFrame)
-
-        if targetcol not in df.columns:
-            raise KeyError(targetcol, ' not in table columns')
-
-        y_train = df[targetcol]
-        x_train = df.drop(targetcol, axis=1)
-        assert isinstance(x_train,pd.DataFrame)
-        assert isinstance(y_train,pd.Series)
-        return x_train, y_train
 
     def fit(self, x_train, y_train):
         """
@@ -127,10 +133,10 @@ class MLEvaluationModel:
         if x_score is None or x_score.shape[0] == 0:
             return None
         else:
-            missing_cols=list(filter(lambda x: x not in x_score.columns, self.used_cols))
-            if len(missing_cols)>0:
-                raise KeyError('not all training columns are found in the output of the scorer:',missing_cols)
-            
+            missing_cols = list(filter(lambda x: x not in x_score.columns, self.used_cols))
+            if len(missing_cols) > 0:
+                raise KeyError('not all training columns are found in the output of the scorer:', missing_cols)
+
             # re-arrange the column order
             x_score = x_score[self.used_cols]
 

@@ -46,7 +46,9 @@ companystopwords_list = ['aerospace',
                          'uk',
                          'und']
 streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse', 'strae']
+
 endingwords_list = ['strasse', 'str', 'strae']
+
 bigcities = ['munich',
              'paris',
              'madrid',
@@ -57,6 +59,8 @@ bigcities = ['munich',
              'london',
              'ulm',
              'stuttgart', 'blagnac']
+
 airbus_names = ['airbus', 'casa', 'eads', 'cassidian', 'astrium', 'eurocopter']
+
 idcol = 'groupid'
 queryidcol='queryname'

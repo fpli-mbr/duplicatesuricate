@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 class FuncEvaluationModel:
     """
     This evaluation model applies a evaluation function to return a probability vector
@@ -9,6 +10,7 @@ class FuncEvaluationModel:
         x_score = compare(query,target_records)
         y_proba = dm.predict_proba(x_score)
     """
+
     def __init__(self, used_cols, eval_func):
         """
         Create the model
@@ -16,9 +18,10 @@ class FuncEvaluationModel:
             used_cols (list): list of columns necessary for decision
             eval_func (func): evaluation function to be applied. must return a probability vector
         """
-        self.used_cols=used_cols
+        self.used_cols = used_cols
         self.eval_func = eval_func
         pass
+
     def fit(self):
         """
         pass
@@ -26,7 +29,8 @@ class FuncEvaluationModel:
             None
         """
         pass
-    def predict_proba(self,x_score):
+
+    def predict_proba(self, x_score):
         """
         This is the evaluation function.
         It takes as input a DataFrame with each row being the similarity score between the query and the target records.
@@ -42,9 +46,9 @@ class FuncEvaluationModel:
         missing_cols = list(filter(lambda x: x not in x_score.columns, self.used_cols))
         if len(missing_cols) > 0:
             raise KeyError('not all training columns are found in the output of the scorer:', missing_cols)
-        x_score=x_score[self.used_cols]
+        x_score = x_score[self.used_cols]
 
-        y_proba =x_score.apply(lambda r:self.eval_func(r), axis=1)
-        y_proba.name=1
+        y_proba = x_score.apply(lambda r: self.eval_func(r), axis=1)
+        y_proba.name = 1
 
         return y_proba

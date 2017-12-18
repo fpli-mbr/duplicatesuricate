@@ -16,7 +16,7 @@ class Launcher:
         Args:
             input_records (pd.DataFrame): Input table for record linkage, records to link
             target_records (pd.DataFrame): Table of reference for record linkage
-            linker (RecordLinker): record linked
+            linker (RecordLinker): record linker
             cleanfunc (func):
             idcol (str): name of the column where to store the deduplication results
             queryidcol (str): name of the column used to store the original match

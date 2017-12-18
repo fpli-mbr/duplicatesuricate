@@ -13,8 +13,9 @@ endingwords = duplicatesuricate.preprocessing.companydata.endingwords_list
 bigcities = duplicatesuricate.preprocessing.companydata.bigcities
 airbusnames = duplicatesuricate.preprocessing.companydata.airbus_names
 
-#TODO : rename columns of idcols and cleandict
-#TODO : Inspect result of wo stopwords : why remove sep does not work
+
+# TODO : rename columns of idcols and cleandict
+# TODO : Inspect result of wo stopwords : why remove sep does not work
 
 # convert all duns number as strings with 9 chars
 def cleanduns(s):
@@ -28,23 +29,47 @@ def cleanduns(s):
             return None
         else:
             return s
+
+
+def format_id(n):
+    """
+    Format an id to a str, removing separators like [, . / - ], leading zeros
+    Args:
+        n: id to be formatted
+
+    Returns:
+        str
+    """
+
+    if n is None:
+        return None
+    else:
+        n = str(n)
+        n = n.lstrip('0')
+        for sep in ['-', '.', ' ', '/']:
+            n = n.replace(sep, '')
+        if len(n) == 0:
+            return None
+        else:
+            return n
+
+
 rmv_companystopwords = lambda r: nm.rmv_stopwords(r, stopwords=companystopwords)
-rmv_streetstopwords = lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords,endingwords=endingwords)
-extract_postalcode_1digit= lambda r: None if pd.isnull(r) else str(r)[:1]
+rmv_streetstopwords = lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords, endingwords=endingwords)
+extract_postalcode_1digit = lambda r: None if pd.isnull(r) else str(r)[:1]
 extract_postalcode_2digits = lambda r: None if pd.isnull(r) else str(r)[:2]
-hasairbusname= lambda r: None if pd.isnull(r) else int(any(w in r for w in airbusnames))
-isbigcity=lambda r: None if pd.isnull(r) else int(any(w in r for w in bigcities))
-name_len = lambda r:None if pd.isnull(r) else len(r)
+hasairbusname = lambda r: None if pd.isnull(r) else int(any(w in r for w in airbusnames))
+isbigcity = lambda r: None if pd.isnull(r) else int(any(w in r for w in bigcities))
+name_len = lambda r: None if pd.isnull(r) else len(r)
 
-
-id_cols=['registerid', 'registerid1', 'registerid2', 'taxid', 'kapisid']
+id_cols = ['registerid', 'registerid1', 'registerid2', 'taxid', 'kapisid']
 cleandict = {
     'dunsnumber': cleanduns,
     'name': nm.format_ascii_lower,
     'street': nm.format_ascii_lower,
     'city': nm.format_ascii_lower,
     'name_wostopwords': (lambda r: nm.rmv_stopwords(r, stopwords=companystopwords), 'name'),
-    'street_wostopwords': (lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords), 'street'),
+    'street_wostopwords': (lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords, endingwords=endingwords), 'street'),
     'name_acronym': (lambda r: nm.acronym(r), 'name'),
     'postalcode': nm.format_int_to_str,
     'postalcode_1stdigit': (lambda r: None if pd.isnull(r) else str(r)[:1], 'postalcode'),
@@ -56,7 +81,7 @@ cleandict = {
 }
 
 for c in id_cols:
-    cleandict[c] = nm.format_int_to_str
+    cleandict[c] = format_id
 
 
 def clean_db(df, cleandict=cleandict):
@@ -76,12 +101,12 @@ def clean_db(df, cleandict=cleandict):
 
     for k in cleandict.keys():
         newcol = k
-        if type(cleandict[k])==tuple:
-            oncol=cleandict[k][1]
-            myfunc=cleandict[k][0]
+        if type(cleandict[k]) == tuple:
+            oncol = cleandict[k][1]
+            myfunc = cleandict[k][0]
         else:
-            oncol=k
-            myfunc=cleandict[k]
-        df[newcol]=df[oncol].apply(myfunc)
+            oncol = k
+            myfunc = cleandict[k]
+        df[newcol] = df[oncol].apply(myfunc)
 
     return df
