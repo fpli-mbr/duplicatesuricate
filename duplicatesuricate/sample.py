@@ -44,7 +44,12 @@ if __name__ == '__main__':
                   cleanfunc=None,
                   linker=rl)
     # Start linkage
-    y = lh.start_linkage()
-    z=lh.format_results(y,display=['productname','location','constructor'],fuzzy=['productname'])
-    print(z)
-
+    #df = lh.build_labelled_table(query_index='B1',on_index=None,display=['productname','location','constructor'],fuzzy=['productname'],ids=id_cols)
+    #print(df)
+    #y = lh.start_linkage()
+    #z=lh.format_results(y,display=['productname','location','constructor'],fuzzy=['productname'],ids=id_cols)
+    df =lh.chain_build_labelled_table(input_index=lh.input_records.index,
+                                      target_index=lh.target_records.index,
+                                      display=['productname', 'location', 'constructor'], fuzzy=['productname'],
+                                      ids=id_cols,return_filtered=True)
+    print(df)

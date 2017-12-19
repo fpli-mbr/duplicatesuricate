@@ -4,7 +4,7 @@ import pandas as pd
 import neatmartinet as nm
 
 from .recordlinkage import RecordLinker
-from .scoring import Scorer
+
 
 class Launcher:
     def __init__(self, input_records,
@@ -39,33 +39,32 @@ class Launcher:
                             evaluator=model)
 
         """
-        #TODO: Complete docstring
-        #TODO: add the possibility of having a group id
-        #TODO: Re arrange with Record Linker
+        # TODO: Complete docstring
+        # TODO: add the possibility of having a group id
+        # TODO: Re arrange with Record Linker
 
-        self.linker =linker
+        self.linker = linker
 
         if cleanfunc is None:
-            cleanfunc = lambda x:x
+            cleanfunc = lambda x: x
 
         self.input_records = cleanfunc(input_records)
 
-        missingcols=list(filter(lambda x: x not in self.input_records.columns, self.linker.compared_cols))
+        missingcols = list(filter(lambda x: x not in self.input_records.columns, self.linker.compared_cols))
         if len(missingcols) > 0:
-            raise KeyError('RecordLinker does not have all necessary columns in input after cleaning',missingcols)
+            raise KeyError('RecordLinker does not have all necessary columns in input after cleaning', missingcols)
 
         self.target_records = cleanfunc(target_records)
-        missingcols=list(filter(lambda x: x not in self.target_records.columns, self.linker.compared_cols))
+        missingcols = list(filter(lambda x: x not in self.target_records.columns, self.linker.compared_cols))
         if len(missingcols) > 0:
-            raise KeyError('RecordLinker does not have all necessary columns in target after cleaning',missingcols)
+            raise KeyError('RecordLinker does not have all necessary columns in target after cleaning', missingcols)
 
         self.idcol = idcol
         self.queryidcol = queryidcol
         self.verbose = verbose
 
-        self._results={}
+        self._results = {}
         pass
-
 
     def _generate_query_index_(self, in_index=None):
         """
@@ -112,7 +111,7 @@ class Launcher:
         else:
             return goodmatches_index[:n_matches_max]
 
-    def start_linkage(self, sample_size=10,in_index=None, n_matches_max=1) -> dict:
+    def start_linkage(self, sample_size=10, in_index=None, n_matches_max=1) -> dict:
         """
         Takes as input an index of the input records, and returns a dict showing their corresponding matches
         on the target records
@@ -133,7 +132,7 @@ class Launcher:
         else:
             n_total = sample_size
 
-        in_index=in_index[:n_total]
+        in_index = in_index[:n_total]
 
         print('starting deduplication at {}'.format(pd.datetime.now()))
         self._results = {}
@@ -155,16 +154,16 @@ class Launcher:
             duration = (time_end - time_start).total_seconds()
 
             if self.verbose:
-                print('{} of {} deduplicated | found {} time elapsed {} s'.format(i, n_total,n_deduplicated, duration))
+                print('{} of {} deduplicated | found {} time elapsed {} s'.format(i, n_total, n_deduplicated, duration))
 
         print('finished work at {}'.format(pd.datetime.now()))
         if n_matches_max == 1:
-            convertlisttovalue=lambda v:None if v is None else v[0]
+            convertlisttovalue = lambda v: None if v is None else v[0]
             for k in self._results.keys():
-                self._results[k]=convertlisttovalue(self._results[k])
+                self._results[k] = convertlisttovalue(self._results[k])
         return self._results
 
-    def format_results(self, res, display, fuzzy=None,ids=None):
+    def format_results(self, res, display, fuzzy=None, ids=None):
         """
         Return a formatted, side by side comparison of results
         Args:
@@ -178,45 +177,105 @@ class Launcher:
         # x = pd.Series(index=list(r.keys()),values=list(r.keys()))
         # df=x.apply(lambda r:pd.Series(r))
         # assert isinstance(df,pd.DataFrame)
-        keys=list(res.keys())
-        x=pd.Series(index=keys,data=keys, name='ix_source')
-        x.index.name='ix_source'
-        df=x.apply(lambda r:pd.Series(res[r]))
-        assert isinstance(df,pd.DataFrame)
-        if df.shape[1]>1:
-            raise(ValueError('Too many columns to unpack, expected only one result per query'))
-        df.rename(columns={0:'ix_target'},inplace=True)
-        df.reset_index(inplace=True,drop=False)
-        df.rename(columns={'index': 'ix_source'}, inplace=True)
-        df.dropna(inplace=True)
-        if df.shape[0]==0:
+        keys = list(res.keys())
+        x = pd.Series(index=keys, data=keys, name='ix_source')
+        x.index.name = 'ix_source'
+        df = x.apply(lambda r: pd.Series(res[r]))
+        assert isinstance(df, pd.DataFrame)
+        if df.shape[1] > 1:
+            df.reset_index(inplace=True, drop=False)
+            df.rename(columns={'index': 'ix_source'}, inplace=True)
+            rescols = list(filter(lambda x: x != 'ix_source', df.columns))
+            if len(rescols) > 0:
+                df = df.melt(id_vars='ix_source', value_vars=rescols, var_name=['result'], value_name='ix_target')
+                df.drop(['result'], axis=1, inplace=True)
+                df.dropna(subset=['ix_target'], inplace=True)
+                df.sort_values(by=['ix_source', 'ix_target'], inplace=True)
+            else:
+                return None
+        else:
+            df.rename(columns={0: 'ix_target'}, inplace=True)
+            df.reset_index(inplace=True, drop=False)
+            df.rename(columns={'index': 'ix_source'}, inplace=True)
+            df.dropna(inplace=True)
+        if df.shape[0] == 0:
             return None
 
         if fuzzy is None:
-            allcols=display
+            allcols = display
         else:
-            allcols=list(set(display+fuzzy))
+            allcols = list(set(display + fuzzy))
         for c in allcols:
-            df[c+'_source']=df['ix_source'].apply(lambda r:self.input_records.loc[r,c])
-            df[c+'_target']=df['ix_target'].apply(lambda r:self.target_records.loc[r,c])
+            df[c + '_source'] = df['ix_source'].apply(lambda r: self.input_records.loc[r, c])
+            df[c + '_target'] = df['ix_target'].apply(lambda r: self.target_records.loc[r, c])
         if fuzzy is not None:
             for c in fuzzy:
-                df[c+'_score']=df.apply(lambda r:nm.compare_twostrings(r[c+'_source'],r[c+'_target']),axis=1)
+                df[c + '_score'] = df.apply(lambda r: nm.compare_twostrings(r[c + '_source'], r[c + '_target']), axis=1)
 
         if ids is not None:
-            y=pd.DataFrame(index=df.index)
+            y = pd.DataFrame(index=df.index)
             for c in ids:
-                #Make sure columns or in the table
-                for s in ['_source','_target']:
-                    colname= (c+s)
+                # Make sure columns or in the table
+                for s in ['_source', '_target']:
+                    colname = (c + s)
                     if colname not in df.columns:
-                        if s=='_source':
-                            df[colname]=df['ix'+s].apply(lambda r: self.input_records.loc[r, c])
-                        elif s =='_target':
+                        if s == '_source':
+                            df[colname] = df['ix' + s].apply(lambda r: self.input_records.loc[r, c])
+                        elif s == '_target':
                             df[colname] = df['ix' + s].apply(lambda r: self.target_records.loc[r, c])
-                #Calculate the score
-                y[c+'_exact_Score']=df.apply(lambda r:nm.exactmatch(r[c+'_source'],r[c+'_target']),axis=1)
-            #after the loop, take the mast of the score
-            df['n_ids_matching']=y.fillna(0).sum(axis=1)
+                # Calculate the score
+                y[c + '_exact_Score'] = df.apply(lambda r: nm.exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
+            # after the loop, take the mast of the score
+            df['n_ids_matching'] = y.fillna(0).sum(axis=1)
 
         return df
+
+    def build_labelled_table(self, query_index, on_index, display, fuzzy=None, ids=None,return_filtered=True):
+        """
+        Create a labelled table
+        Args:
+            query_index (obj): name of the query index
+            on_index (pd.Index): index of the target records
+            display (list): list of columns to be displayed
+            fuzzy (list): list of columns on which to perform fuzzy score
+            ids (list): list of columns on which to calculate the number of exact_matching
+        Returns:
+            pd.DataFrame
+        """
+        y_proba = self.linker.predict_proba(query=self.input_records.loc[query_index],
+                                            on_index=on_index,
+                                            return_filtered=return_filtered)
+
+        if y_proba is not None and y_proba.shape[0] > 0:
+            res = {query_index: list(y_proba.index)}
+            table = self.format_results(res=res, display=display, fuzzy=fuzzy, ids=ids)
+            table['y_proba'] = table['ix_target'].apply(lambda r:y_proba.loc[r])
+            return table
+        else:
+            return None
+
+    def chain_build_labelled_table(self, input_index, target_index, display, fuzzy=None, ids=None,return_filtered=True):
+        """
+        Create a labelled table
+        Args:
+            input_index (pd.Index): list of records names to be linked
+            target_index (pd.Index): list of records names to be linked to
+            display (list): list of columns to be displayed
+            fuzzy (list): list of columns on which to perform fuzzy score
+            ids (list): list of columns on which to calculate the number of exact_matching
+        Returns:
+            pd.DataFrame
+
+        """
+        alldata=pd.DataFrame()
+        for q_ix in input_index:
+            table = self.build_labelled_table(query_index=q_ix,
+                                              on_index=target_index,
+                                              display=display,fuzzy=fuzzy,ids=ids,return_filtered=return_filtered)
+            if table is not None:
+                if alldata.shape[0] == 0:
+                    alldata=table.copy()
+                else:
+                    alldata = pd.concat([alldata,table],axis=0,ignore_index=True)
+                del table
+        return alldata

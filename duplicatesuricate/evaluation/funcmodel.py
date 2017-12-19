@@ -1,6 +1,5 @@
 import pandas as pd
 
-#TODO : Integrate decision threshold in model
 
 class FuncEvaluationModel:
     """
@@ -23,6 +22,7 @@ class FuncEvaluationModel:
         self.eval_func = eval_func
         pass
 
+
     def fit(self):
         """
         pass
@@ -30,6 +30,16 @@ class FuncEvaluationModel:
             None
         """
         pass
+    @classmethod
+    def from_dict(cls,thresholds):
+        #TODO:
+        """
+        Args:
+            thresholds (dict):
+
+        Returns:
+            FuncEvaluationModel
+        """
 
     def predict_proba(self, x_score):
         """

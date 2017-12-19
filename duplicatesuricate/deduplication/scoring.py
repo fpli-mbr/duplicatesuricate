@@ -58,19 +58,23 @@ class Scorer:
 
         self.navalue = fillna
 
+        self.input_records = pd.DataFrame()
+
         pass
 
-    def filter_all_any(self, query, on_index=None, filterdict=None):
+    def filter_all_any(self, query, on_index=None, filterdict=None, return_filtered=True):
         """
         returns a pre-filtered table score calculated on the column names provided in the filterdict.
         in the values for 'any': a match on any of these columns ensure the row is kept for further analysis
         in the values for 'all': a match on all of these columns ensure the row is kept for further analysis
         if the row does not have any exact match for the 'any' columns, or if it has one bad match for the 'all' columns,
         it is filtered out
+        MODIF: if return_filtered, this will not filter the table at all but just returns the scores
         Args:
             query (pd.Series): query
             on_index (pd.Index): index
             filterdict(dict): dictionnary two lists of values: 'any' and 'all'
+            return_filtered (bool): whether or not to filter after calculation of the first scores
 
         Returns:
             pd.DataFrame: a DataFrame with the exact score of the columns provided in the filterdict
@@ -121,7 +125,11 @@ class Scorer:
         results = (allcriteriasmatch | anycriteriasmatch)
 
         assert isinstance(table, pd.DataFrame)
-        return table.loc[results]
+
+        if return_filtered is True:
+            table = table.loc[results]
+
+        return table
 
     def build_similarity_table(self,
                                query,
@@ -175,7 +183,7 @@ class Scorer:
 
         return table_score
 
-    def filter_compare(self, query, on_index=None):
+    def filter_compare(self, query, on_index=None,return_filtered=True):
         """
         Simultaneously create a similarity table and filter the data.
         It works in three steps:
@@ -185,9 +193,12 @@ class Scorer:
         - further score with dedicated comparison methods on selected columns
         - returns the final similarity table which is the concatenation of all of the scoring functions above on the rows
             that have been filtered
+        MODIF : if return_filtered parameter is set to False, then it will not filter the data.
+
         Args:
             query (pd.Series): query
             on_index (pd.Index): index on which to filter and compare
+            return_filtered (bool): whether or not to filter after calculation of the first scores
 
         Returns:
             pd.DataFrame similarity table
@@ -201,7 +212,8 @@ class Scorer:
 
         table_score_complete = self.filter_all_any(query=query,
                                                    on_index=workingindex,
-                                                   filterdict=self.filterdict
+                                                   filterdict=self.filterdict,
+                                                   return_filtered=return_filtered
                                                    )
         workingindex = table_score_complete.index
 
@@ -223,7 +235,8 @@ class Scorer:
             assert isinstance(y_intermediate, pd.Series)
             assert (y_intermediate.dtype == bool)
 
-            table_score_complete = table_score_complete.loc[y_intermediate]
+            if return_filtered is True:
+                table_score_complete = table_score_complete.loc[y_intermediate]
 
             workingindex = table_score_complete.index
 
@@ -288,6 +301,21 @@ class Scorer:
                 table[colname] = self.df.loc[on_index, c].apply(lambda r: func(r, query[c]))
         return table
 
+    def compare_nofilter(self, query, on_index):
+        """
+        Calculate the score, without filtering
+        Only advised in order to calculate a training table, when on_index is a limited scope of the data
+        Args:
+            query (pd.Series):
+            on_index (pd.Index):
+
+        Returns:
+            pd.DataFrame
+        """
+        table_score_complete = self.filter_compare(query = query,
+                                                   on_index=on_index,
+                                                   return_filtered=False)
+        return table_score_complete
 
 def _unpack_scoredict(scoredict):
     """
