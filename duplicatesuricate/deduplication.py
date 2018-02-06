@@ -98,38 +98,41 @@ class Suricate:
         else:
             return goodmatches_index[:n_matches_max]
 
-    def start_linkage(self, sample_size=10, in_index=None, n_matches_max=1, with_proba=False) -> dict:
+    def start_linkage(self, sample_size=10, on_inputs=None, n_matches_max=1, with_proba=False) -> dict:
         """
         Takes as input an index of the input records, and returns a dict showing their corresponding matches
         on the target records
         Args:
-            in_index (pd.Index): index of the records (from input_records) to be deduplicated
+            on_inputs (pd.Index): index of the records (from input_records) to be deduplicated
             sample_size (int): number of records to be deduplicated. If 'all' is provided, deduplicaate all
             n_matches_max (int): maximum number of possible matches to be returned.
                 If none, all matches would be returned
             with_proba (bool): whether or not to return the probabilities
 
         Returns:
-            dict : results in the form of {index_of_input_record:[list of index_of_target_records]} or
+            pd.DataFrame : results in the form of {index_of_input_record:[list of index_of_target_records]} or
                     {index_of_input_record:{index_of_target_records:proba of target records}}
         """
-        if in_index is None and n_matches_max is None and with_proba is True:
+        if on_inputs is None and n_matches_max is None and with_proba is True:
             print(
                 'careful, huge number of results (cartesian product) will be returned. Limit to the best probables matches with n_matches_,ax or set with_proba = False')
-        if in_index is None:
-            in_index = self.input_records.index
+        if on_inputs is None:
+            on_inputs = self.input_records.index
 
         if sample_size == 'all' or sample_size is None:
-            n_total = self.input_records.shape[0]
+            if on_inputs is not None:
+                n_total = len(on_inputs)
+            else:
+                n_total = self.input_records.shape[0]
         else:
             n_total = sample_size
 
-        in_index = in_index[:n_total]
+        on_inputs = on_inputs[:n_total]
 
         print('starting deduplication at {}'.format(pd.datetime.now()))
         self._results = {}
         if with_proba is False:
-            for i, ix in enumerate(in_index):
+            for i, ix in enumerate(on_inputs):
                 # timing
                 time_start = pd.datetime.now()
 
@@ -156,7 +159,7 @@ class Suricate:
             # return proba
             # timing
             time_start = pd.datetime.now()
-            for i, ix in enumerate(in_index):
+            for i, ix in enumerate(on_inputs):
                 # get the probability vector
                 y_proba = self.linker.predict_proba(query=self.input_records.loc[ix])
                 # if none sve none
@@ -181,49 +184,24 @@ class Suricate:
                             i + 1, n_total, n_deduplicated, n_matches_max, duration))
 
             print('finished work at {}'.format(pd.datetime.now()))
-        return self._results
+        return self.unpack_results(self._results)
 
     def format_results(self, res, display=None, fuzzyscorecols=None, exactscorecols=None, with_proba=False):
         """
         Return a formatted, side by side comparison of results
         Args:
             res (dict): results {'ix_source_1':['ix_target_2','ix_target_3']} / {'ix_source':{'ix_target1':0.9,'ix_target2':0.5}}
-            display (list): list of columns to be displayed
-            fuzzyscorecols (list): list of columns on which to perform fuzzy score
-            exactscorecols (list): list of columns on which to calculate the number of exact_matching
+            display (list): list of columns to be displayed, default self.linker.compared_cols
+            fuzzyscorecols (list): list of columns on which to perform fuzzy score, default None
+            exactscorecols (list): list of columns on which to calculate the number of exact_matching, default None
             with_proba (bool) : if the result list has a list of probabilities
         Returns:
-            pd.DataFrame
+            pd.DataFrame with columns: ['ix_source','ix_target','display_source','display_target','fuzzy_source','fuzzy_target',('y_proba')]
         """
-        # x = pd.Series(index=list(r.keys()),values=list(r.keys()))
-        # df=x.apply(lambda r:pd.Series(r))
-        # assert isinstance(df,pd.DataFrame)
 
         # Melt the results dictionnary to have the form:
         # df.columns = ['ix_source','ix_target'] if with_proba is false, ['ix_source','ix_target','y_proba' otherwise]
-        if with_proba is False:
-            df = pd.DataFrame(columns=['ix_source', 'ix_target'])
-            for ix_source in list(res.keys()):
-                matches = res.get(ix_source)
-                if matches is not None:
-                    ixs_target = pd.Series(data=matches)
-                    ixs_target.name = 'ix_target'
-                    temp = pd.DataFrame(ixs_target).reset_index(drop=True)
-                    temp['ix_source'] = ix_source
-                    df = pd.concat([df, temp], axis=0, ignore_index=True)
-            df.reset_index(inplace=True, drop=True)
-        else:
-            df = pd.DataFrame(columns=['ix_source', 'ix_target', 'y_proba'])
-            for ix_source in list(res.keys()):
-                probas = res.get(ix_source)
-                if probas is not None:
-                    ixs_target = pd.Series(probas)
-                    ixs_target.index.name = 'ix_target'
-                    ixs_target.name = 'y_proba'
-                    temp = pd.DataFrame(ixs_target).reset_index(drop=False)
-                    temp['ix_source'] = ix_source
-                    df = pd.concat([df, temp], axis=0, ignore_index=True)
-            df.reset_index(inplace=True, drop=True)
+        df = self.unpack_results(res,with_proba=with_proba)
 
         if df.shape[0] == 0:
             return None
@@ -266,48 +244,18 @@ class Suricate:
 
         return df
 
-    def build_labelled_table(self, query_index, on_index=None, display=None, fuzzy=None, ids=None,
-                             return_filtered=True):
+    def build_visualcomparison_table(self, inputs, targets, display=None, fuzzy=None, ids=None):
         """
-        Create a labelled table
+        Create a comparison table for visual inspection of the results
+        Both input index and target index are expected to have the same length
         Args:
-            query_index (obj): name of the query index
-            on_index (pd.Index): index of the target records
-            display (list): list of columns to be displayed
-            fuzzy (list): list of columns on which to perform fuzzy score
-            ids (list): list of columns on which to calculate the number of exact_matching
-            return_filtered (bool): if False, all targets row are returned (no filtering step)
+            inputs (pd.Index): list of input index to be displayed
+            targets (pd.Index): list of target index to be displayed
+            display (list): list of columns to be displayed (optional,default self.compared_colds)
+            fuzzy (list): list of columns on which to perform fuzzy score (optional, default None)
+            ids (list): list of columns on which to calculate the number of exact_matching (optional, default None)
         Returns:
-            pd.DataFrame
-        """
-        y_proba = self.linker.predict_proba(query=self.input_records.loc[query_index],
-                                            on_index=on_index,
-                                            return_filtered=return_filtered)
-
-        if y_proba is None or y_proba.shape[0] == 0:
-            if return_filtered is True:
-                return None
-            else:
-                y_proba = pd.Series(index=on_index).fillna(0)
-
-        res = {query_index: list(y_proba.index)}
-
-        table = self.format_results(res=res, display=display, fuzzyscorecols=fuzzy, exactscorecols=ids)
-        table['y_proba'] = table['ix_target'].apply(lambda r: y_proba.loc[r])
-
-        return table
-
-    def chain_build_labelled_table(self, inputs, targets, display=None, fuzzy=None, ids=None):
-        """
-        Create a labelled table
-        Args:
-            inputs (pd.Index): list of records names to be linked
-            targets (pd.Index): list of records names to be linked to
-            display (list): list of columns to be displayed
-            fuzzy (list): list of columns on which to perform fuzzy score
-            ids (list): list of columns on which to calculate the number of exact_matching
-        Returns:
-            pd.DataFrame
+            pd.DataFrame ['ix_source','ix_target','display_source','display_target','fuzzy_source','fuzzy_target']
 
         """
         res = {}
@@ -315,31 +263,113 @@ class Suricate:
             res[u] = [v]
 
         table = self.format_results(res, display=display, fuzzyscorecols=fuzzy, exactscorecols=ids)
+
+        #set index
+        table.set_index(['ix_source','ix_target'],inplace=True)
+
         return table
 
-    def build_training_table(self, inputs, targets, y_true, scoredict=None):
+    def build_training_table(self, inputs, targets, y_true=None, with_proba = True,scoredict=None,fillna=-1):
         """
         Create a scoring table, with a label (y_true), for supervised learning
         inputs, targets,y_true are expected to be of the same length
         Args:
-            inputs (pd.Series): list of index of the input dataframe
-            targets (pd.Series): list of index of the target dataframe
+            inputs (pd.Index): list of index of the input dataframe
+            targets (pd.Index): list of index of the target dataframe
+            y_true (pd.Series): labelled values (0 or 1) to say if it's a match or not, optional
+            with_proba (bool): gives the probability score calculated by the tool, optional
+            scoredict (dict): dictionnary of scores you want to calculate, default self.scoredict
+
+        Returns:
+            pd.DataFrame index=['ix_source','ix_target'],colums=[scores....,'y_true','y_proba']
+        """
+
+        training_table_complete = pd.DataFrame(columns=self.linker.score_cols)
+        for t, u in zip(inputs, targets):
+            similarity_vector = self.linker.scoringmodel.build_similarity_table(query=self.input_records.loc[t],
+                                                                                on_index=pd.Index([u]),
+                                                                                scoredict=scoredict)
+            similarity_vector['ix_source']=t
+            similarity_vector['ix_target'] = u
+            training_table_complete = pd.concat([training_table_complete, similarity_vector], ignore_index=True, axis=0)
+
+        #fillna
+        training_table_complete.fillna(fillna,inplace=True)
+
+        # calculate the probability vector
+        if with_proba:
+            X_train = training_table_complete[self.linker.score_cols]
+            y_proba = self.linker.evaluationmodel.predict_proba(X_train)
+            training_table_complete['y_proba']=y_proba
+        if y_true is not None:
+            training_table_complete['y_true'] = y_true
+
+        #set index
+        training_table_complete.set_index(['ix_source','ix_target'],inplace=True)
+
+        return training_table_complete
+
+    def unpack_results(self,res,with_proba=False):
+        """
+        Transform the dictionary_like output from start_linkage into a pd.DataFrame
+        Format the results dictionnary to have the form:
+        df.columns = ['ix_source','ix_target'] if with_proba is false, ['ix_source','ix_target','y_proba' otherwise]
+
+        Args:
+            res (dict): results {'ix_source_1':['ix_target_2','ix_target_3']} / {'ix_source':{'ix_target1':0.9,'ix_target2':0.5}}
+            with_proba (bool): if the result dictionnary contains a probability vector
+
+        Returns:
+            pd.DataFrame
+
+        """
+        if with_proba is False:
+            df = pd.DataFrame(columns=['ix_source', 'ix_target'])
+            for ix_source in list(res.keys()):
+                matches = res.get(ix_source)
+                if matches is not None:
+                    ixs_target = pd.Series(data=matches)
+                    ixs_target.name = 'ix_target'
+                    temp = pd.DataFrame(ixs_target).reset_index(drop=True)
+                    temp['ix_source'] = ix_source
+                    df = pd.concat([df, temp], axis=0, ignore_index=True)
+            df.reset_index(inplace=True, drop=True)
+        else:
+            df = pd.DataFrame(columns=['ix_source', 'ix_target', 'y_proba'])
+            for ix_source in list(res.keys()):
+                probas = res.get(ix_source)
+                if probas is not None:
+                    ixs_target = pd.Series(probas)
+                    ixs_target.index.name = 'ix_target'
+                    ixs_target.name = 'y_proba'
+                    temp = pd.DataFrame(ixs_target).reset_index(drop=False)
+                    temp['ix_source'] = ix_source
+                    df = pd.concat([df, temp], axis=0, ignore_index=True)
+            df.reset_index(inplace=True, drop=True)
+        return df
+
+    def build_combined_table(self,inputs,targets,with_proba=False,y_true=None):
+        """
+        Combine a side-by-side visual comparison table (build_visualcomparison_table)
+        And a scoring table created by build_training_table
+        Args:
+            inputs (pd.Index): list of index of the input dataframe
+            targets (pd.Index): list of index of the target dataframe
             y_true (pd.Series): labelled values (0 or 1) to say if it's a match or not
-            scoredict (dict): dictionnary of scores you want to calculate
+            with_proba (bool): gives the probability score calculated by the tool
 
         Returns:
             pd.DataFrame
         """
+        visual_table = self.build_visualcomparison_table(inputs=inputs,
+                                                            targets=targets)
+        scored_table = self.build_training_table(inputs=inputs,
+                                                 targets=targets,
+                                                 with_proba=with_proba,
+                                                 y_true=y_true)
+        combined_table = visual_table.join(scored_table,rsuffix='_fromscoretable',how='left')
+        return combined_table
 
-        training_table_complete = pd.DataFrame(columns=self.linker.score_cols + ['y_true'])
-        for t, u, v in zip(inputs, targets, y_true):
-            similarity_vector = self.linker.scoringmodel.build_similarity_table(query=self.input_records.loc[t],
-                                                                                on_index=pd.Index([u]),
-                                                                                scoredict=scoredict)
-            similarity_vector['y_true'] = v
-            training_table_complete = pd.concat([training_table_complete, similarity_vector], ignore_index=True, axis=0)
-
-        return training_table_complete
 
 
 class RecordLinker:
@@ -396,6 +426,7 @@ class RecordLinker:
                                   intermediatethreshold=intermediate_thresholds,
                                   decision_cols=self.evaluationmodel.used_cols)
 
+
         # configure the intermediate decision function
         # If threshold: threshold_based, if no : let all pass)
         if intermediate_thresholds is not None:
@@ -412,7 +443,7 @@ class RecordLinker:
                                    fillna=fillna
                                    )
 
-        missingcols = list(filter(lambda x: x not in self.scoringmodel.scorecols, self.evaluationmodel.used_cols))
+        missingcols = list(filter(lambda x: x not in self.scoringmodel.score_cols, self.evaluationmodel.used_cols))
         if len(missingcols) > 0:
             raise KeyError('not all training columns are found in the output of the scorer:', missingcols)
         pass
@@ -441,37 +472,41 @@ class RecordLinker:
         self.compared_cols = []
         self.score_cols = []
 
+
         if filterdict is not None:
-            self.filterdict = _checkdict(filterdict, mandatorykeys=['all', 'any'], existinginput=self.score_cols)
-            incols, outcols = _unpack_scoredict(self.filterdict)
+            for c in ['all','any']:
+                if filterdict.get(c) is None:
+                    filterdict[c]=None
+            self.filterdict = filterdict
+
+            incols, outcols = transform_scoredict_scorecols(self.filterdict)
             self.compared_cols += incols
             self.score_cols += outcols
         else:
             self.filterdict = None
 
         if intermediatethreshold is not None and len(intermediatethreshold) > 0:
-            score_intermediate = calculatescoredict(existing_cols=self.score_cols,
-                                                    used_cols=list(intermediatethreshold.keys()))
+            score_intermediate = transform_scorecols_scoredict(existing_cols=self.score_cols,
+                                                               used_cols=list(intermediatethreshold.keys()))
         else:
             score_intermediate = None
 
         if score_intermediate is not None:
-            self.intermediate_score = _checkdict(score_intermediate, mandatorykeys=scoringkeys,
-                                                 existinginput=self.score_cols)
-            incols, outcols = _unpack_scoredict(self.intermediate_score)
+            self.intermediate_score = score_intermediate
+            incols, outcols = transform_scoredict_scorecols(self.intermediate_score)
             self.compared_cols += incols
             self.score_cols += outcols
         else:
             self.intermediate_score = None
 
         if decision_cols is not None and len(decision_cols) > 0:
-            score_further = calculatescoredict(existing_cols=self.score_cols, used_cols=decision_cols)
+            score_further = transform_scorecols_scoredict(existing_cols=self.score_cols, used_cols=decision_cols)
         else:
             score_further = None
 
         if score_further is not None:
-            self.further_score = _checkdict(score_further, mandatorykeys=scoringkeys, existinginput=self.score_cols)
-            incols, outcols = _unpack_scoredict(self.further_score)
+            self.further_score = score_further
+            incols, outcols = transform_scoredict_scorecols(self.further_score)
             self.compared_cols += incols
             self.score_cols += outcols
         else:
@@ -747,11 +782,13 @@ def threshold_based_decision(row, thresholds):
 scorename = {'fuzzy': '_fuzzyscore',
              'token': '_tokenscore',
              'exact': '_exactscore',
-             'acronym': '_acronymscore'}
+             'acronym': '_acronymscore',
+             'attributes':'na'}
 scorefuncs = {'fuzzy': nm.compare_twostrings,
               'token': nm.compare_tokenized_strings,
               'exact': nm.exactmatch,
-              'acronym': nm.compare_acronyme}
+              'acronym': nm.compare_acronyme,
+              'attributes':'na'}
 scoringkeys = list(scorename.keys())
 
 
@@ -778,26 +815,42 @@ class Scorer:
         """
 
         self.df = df
-        self.scorecols = []
+
+        self.score_cols = []
         self.compared_cols = []
 
-        self.filterdict = _checkdict(filterdict, mandatorykeys=['all', 'any'], existinginput=self.scorecols)
-        incols, outcols = _unpack_scoredict(self.filterdict)
-        self.compared_cols += incols
-        self.scorecols += outcols
+        ###
+        if filterdict is not None:
+            for c in ['all','any']:
+                if filterdict.get(c) is None:
+                    filterdict[c]=None
+            self.filterdict = filterdict
 
-        self.intermediate_score = _checkdict(score_intermediate, mandatorykeys=scoringkeys,
-                                             existinginput=self.scorecols)
-        incols, outcols = _unpack_scoredict(self.intermediate_score)
-        self.compared_cols += incols
-        self.scorecols += outcols
+            incols, outcols = transform_scoredict_scorecols(self.filterdict)
+            self.compared_cols += incols
+            self.score_cols += outcols
+        else:
+            self.filterdict = None
 
-        self.further_score = _checkdict(score_further, mandatorykeys=scoringkeys, existinginput=self.scorecols)
-        incols, outcols = _unpack_scoredict(self.further_score)
-        self.compared_cols += incols
-        self.scorecols += outcols
+        if score_intermediate is not None:
+            self.intermediate_score = score_intermediate
+            incols, outcols = transform_scoredict_scorecols(self.intermediate_score)
+            self.compared_cols += incols
+            self.score_cols += outcols
+        else:
+            self.intermediate_score = None
 
-        self.total_scoredict = calculatescoredict(used_cols=self.scorecols)
+        if score_further is not None:
+            self.further_score = score_further
+            incols, outcols = transform_scoredict_scorecols(self.further_score)
+            self.compared_cols += incols
+            self.score_cols += outcols
+        else:
+            self.further_score = None
+
+        ####
+
+        self.total_scoredict = transform_scorecols_scoredict(used_cols=self.score_cols)
 
         self.intermediate_func = decision_intermediate
 
@@ -928,13 +981,14 @@ class Scorer:
         attributes_cols = scoredict.get('attributes')
         if attributes_cols is not None:
             for c in attributes_cols:
-                table_score[c + '_query'] = query[c]
-                table_score[c + '_row'] = self.df.loc[on_index, c]
+                table_score[c + '_source'] = query[c]
+                table_score[c + '_target'] = self.df.loc[on_index, c]
 
         for c in scoringkeys:
-            table = self._compare(query, on_index=on_index, on_cols=scoredict.get(c), func=scorefuncs[c],
-                                  suffix=scorename[c])
-            table_score = pd.concat([table_score, table], axis=1)
+            if c!='attributes':
+                table = self._compare(query, on_index=on_index, on_cols=scoredict.get(c), func=scorefuncs[c],
+                                      suffix=scorename[c])
+                table_score = pd.concat([table_score, table], axis=1)
 
         return table_score
 
@@ -1073,10 +1127,10 @@ class Scorer:
         return table_score_complete
 
 
-def _unpack_scoredict(scoredict):
+def transform_scoredict_scorecols(scoredict):
     """
     Calculate, from the scoredict, two lists:
-    - the list of the names of columns on which the scoring is performeed
+    - the list of the names of columns on which the scoring is performed compared_cols,used_cols
     - the list of the names of the scoring columns
 
     The names of the keys can be : 'all','any'
@@ -1088,7 +1142,7 @@ def _unpack_scoredict(scoredict):
         Should be of the form key:[list] or key:None.
 
     Returns:
-        list,list : input_cols, output_cols
+        list,list : compared_cols, used_cols
     Examples:
         _unpack_scoredict({'fuzzy':['name','street'],'exact':['id'],'token':None,'attributes':['name_len'],
         all=['id','id2']}):
@@ -1106,45 +1160,18 @@ def _unpack_scoredict(scoredict):
     if scoredict.get('attributes') is not None:
         for c in scoredict['attributes']:
             inputcols.append(c)
-            outputcols.append(c + '_query')
-            outputcols.append(c + '_row')
+            outputcols.append(c + '_source')
+            outputcols.append(c + '_target')
     for k in scorename.keys():
-        if scoredict.get(k) is not None:
-            for c in scoredict[k]:
-                inputcols.append(c)
-                outputcols.append(c + scorename[k])
+        if k != 'attributes':
+            if scoredict.get(k) is not None:
+                for c in scoredict[k]:
+                    inputcols.append(c)
+                    outputcols.append(c + scorename[k])
     return inputcols, outputcols
 
 
-def _checkdict(inputdict, mandatorykeys, existinginput=None):
-    """
-    Takes as in input a dictionnary, and re-format it in order to have all mandatory keys, and by filtering out the values
-    already containted in the existing input
-    Args:
-        inputdict (dict): source dictionnary
-        mandatorykeys (list): list of names
-        existinginput (list): list of already existing names
-
-    Returns:
-        dict
-    """
-    mydict = {}
-    if inputdict is None:
-        for c in mandatorykeys:
-            mydict[c] = None
-    else:
-        for c in mandatorykeys:
-            if inputdict.get(c) is None:
-                mydict[c] = None
-            else:
-                if existinginput is None:
-                    mydict[c] = inputdict[c].copy()
-                else:
-                    mydict[c] = [v for v in inputdict[c] if v not in existinginput]
-    return mydict
-
-
-def calculatescoredict(used_cols, existing_cols=None):
+def transform_scorecols_scoredict(used_cols, existing_cols=None):
     """
     From a set of existing comparison columns and columns needed for a decision function,
     calculate the scoring dict that is needed for the scorer to calculate all the needed columns.
@@ -1168,9 +1195,13 @@ def calculatescoredict(used_cols, existing_cols=None):
     m_dic = {}
 
     def _findscoreinfo(colname):
-        if colname.endswith('_row') or colname.endswith('_query'):
+        if colname.endswith('_target'):
             k = 'attributes'
-            u = nm.rmv_end_str(colname, '_row')
+            u = nm.rmv_end_str(colname, '_target')
+            return k,u
+        elif colname.endswith('_source'):
+            k = 'attributes'
+            u = nm.rmv_end_str(colname, '_source')
             return k, u
         elif colname.endswith('score'):
             u = nm.rmv_end_str(colname, 'score')
@@ -1205,7 +1236,7 @@ class FuncEvaluationModel:
         y_proba = dm.predict_proba(x_score)
     """
 
-    def __init__(self, used_cols, eval_func):
+    def __init__(self, used_cols, eval_func=None):
         """
         Create the model
         Args:
@@ -1213,7 +1244,10 @@ class FuncEvaluationModel:
             eval_func (func): evaluation function to be applied. must return a probability vector
         """
         self.used_cols = used_cols
-        self.eval_func = eval_func
+        if eval_func is None:
+            self.eval_func = lambda r:sum(r)/len(r)
+        self.scoredict=transform_scorecols_scoredict(self.used_cols)
+        self.compared_cols=transform_scoredict_scorecols(self.scoredict)[0]
         pass
 
     def fit(self):
@@ -1225,15 +1259,27 @@ class FuncEvaluationModel:
         pass
 
     @classmethod
-    def from_dict(cls, thresholds):
-        # TODO: how to initiate that function from a dict like a scoredict
+    def from_dict(cls, scoredict,evalfunc=None):
+        # TODO: to check it works
         """
         Args:
-            thresholds (dict):
+            scoredict (dict): scoretype_dictionnary
+            evalfunc (None): evaluation function, default sum
 
         Returns:
             FuncEvaluationModel
+
+        Examples:
+            scoredict={'attributes':['name_len'],
+                        'fuzzy':['name','street']
+                        'token':'name',
+                        'exact':'id'
+                        'acronym':'name'}
         """
+        compared_cols, used_cols = transform_scoredict_scorecols(scoredict)
+        x = FuncEvaluationModel(used_cols=used_cols,eval_func=evalfunc)
+        return x
+
 
     def predict_proba(self, x_score):
         """
@@ -1262,18 +1308,17 @@ class FuncEvaluationModel:
 class TrainerModel:
     def __init__(self, scoredict):
         """
-        Create the model
+        Create a model used only for scoring (for example for creating training data)
         used_cols (list): list of columns necessary for decision
         eval_func (func): evaluation function to be applied. must return a probability vector
         Args:
             scoredict (dict): {'fuzzy':['name','street'],'token':['name_wostopwords'],'acronym':None}
         """
         self.scoredict = scoredict
-        compared_cols, used_cols = _unpack_scoredict(scoredict)
+        compared_cols, used_cols = transform_scoredict_scorecols(scoredict)
         self.used_cols = used_cols
         self.compared_cols = compared_cols
         pass
-
 
 class MLEvaluationModel:
     """
@@ -1375,5 +1420,6 @@ class MLEvaluationModel:
                 pd.DataFrame(self.model.predict_proba(x_score), index=x_score.index)[1]
             assert isinstance(y_proba, pd.Series)
             return y_proba
+
 
 # Thank you
