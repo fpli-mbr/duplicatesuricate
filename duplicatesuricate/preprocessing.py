@@ -1,23 +1,75 @@
-# %%
-# author : amber ocelot
-# coding=utf-8
 import neatmartinet as nm
-import numpy as np
 import pandas as pd
 
-import duplicatesuricate.preprocessing.companydata
+import duplicatesuricate.preprocessing
 
-companystopwords = duplicatesuricate.preprocessing.companydata.companystopwords_list
-streetstopwords = duplicatesuricate.preprocessing.companydata.streetstopwords_list
-endingwords = duplicatesuricate.preprocessing.companydata.endingwords_list
-bigcities = duplicatesuricate.preprocessing.companydata.bigcities
-airbusnames = duplicatesuricate.preprocessing.companydata.airbus_names
+companystopwords_list = ['aerospace',
+                         'ag',
+                         'and',
+                         'co',
+                         'company',
+                         'consulting',
+                         'corporation',
+                         'de',
+                         'deutschland',
+                         'dr',
+                         'electronics',
+                         'engineering',
+                         'europe',
+                         'formation',
+                         'france',
+                         'gmbh',
+                         'group',
+                         'hotel',
+                         'inc',
+                         'ingenierie',
+                         'international',
+                         'kg',
+                         'la',
+                         'limited',
+                         'llc',
+                         'ltd',
+                         'ltda',
+                         'management',
+                         'of',
+                         'oy',
+                         'partners',
+                         'restaurant',
+                         'sa',
+                         'sarl',
+                         'sas',
+                         'service',
+                         'services',
+                         'sl',
+                         'software',
+                         'solutions',
+                         'srl',
+                         'systems',
+                         'technologies',
+                         'technology',
+                         'the',
+                         'uk',
+                         'und']
+streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse', 'strae']
+endingwords_list = ['strasse', 'str', 'strae']
+bigcities = ['munich',
+             'paris',
+             'madrid',
+             'hamburg',
+             'toulouse',
+             'berlin',
+             'bremen',
+             'london',
+             'ulm',
+             'stuttgart', 'blagnac']
+airbus_names = ['airbus', 'casa', 'eads', 'cassidian', 'astrium', 'eurocopter']
+idcol = 'groupid'
+queryidcol='queryname'
+companystopwords = companystopwords_list
+streetstopwords = streetstopwords_list
+endingwords = endingwords_list
 
 
-# TODO : rename columns of idcols and cleandict
-# TODO : Inspect result of wo stopwords : why remove sep does not work
-
-# convert all duns number as strings with 9 chars
 def cleanduns(s):
     # remove bad duns like DE0000000
     s = nm.format_int_to_str(s, zeropadding=9)
@@ -58,13 +110,12 @@ rmv_companystopwords = lambda r: nm.rmv_stopwords(r, stopwords=companystopwords)
 rmv_streetstopwords = lambda r: nm.rmv_stopwords(r, stopwords=streetstopwords, endingwords=endingwords)
 extract_postalcode_1digit = lambda r: None if pd.isnull(r) else str(r)[:1]
 extract_postalcode_2digits = lambda r: None if pd.isnull(r) else str(r)[:2]
-hasairbusname = lambda r: None if pd.isnull(r) else int(any(w in r for w in airbusnames))
+hasairbusname = lambda r: None if pd.isnull(r) else int(any(w in r for w in airbus_names))
 isbigcity = lambda r: None if pd.isnull(r) else int(any(w in r for w in bigcities))
 name_len = lambda r: None if pd.isnull(r) else len(r)
-
 id_cols = ['registerid', 'registerid1', 'registerid2', 'taxid', 'kapisid']
 cleandict = {
-    'dunsnumber': cleanduns,
+    'duns': cleanduns,
     'name': nm.format_ascii_lower,
     'street': nm.format_ascii_lower,
     'city': nm.format_ascii_lower,
@@ -75,19 +126,16 @@ cleandict = {
     'postalcode_1stdigit': (lambda r: None if pd.isnull(r) else str(r)[:1], 'postalcode'),
     'postalcode_2digits': (lambda r: None if pd.isnull(r) else str(r)[:2], 'postalcode'),
     'name_len': (lambda r: len(r), 'name'),
-    'hasairbusname': (lambda r: 0 if pd.isnull(r) else int(any(w in r for w in airbusnames)), 'name'),
+    'hasairbusname': (lambda r: 0 if pd.isnull(r) else int(any(w in r for w in airbus_names)), 'name'),
     'isbigcity': (lambda r: 0 if pd.isnull(r) else int(any(w in r for w in bigcities)), 'city')
 
 }
 
-for c in id_cols:
-    cleandict[c] = format_id
-
 
 def clean_db(df, cleandict=cleandict):
-    companystopwords = duplicatesuricate.preprocessing.companydata.companystopwords_list
-    streetstopwords = duplicatesuricate.preprocessing.companydata.streetstopwords_list
-    endingwords = duplicatesuricate.preprocessing.companydata.endingwords_list
+    companystopwords = companystopwords_list
+    streetstopwords = streetstopwords_list
+    endingwords = endingwords_list
 
     # Create an alert if the index is not unique
     if pd.Series(df.index).unique().shape[0] != df.shape[0]:

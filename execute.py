@@ -1,9 +1,9 @@
-import pandas as pd
 import neatmartinet as nm
-from duplicatesuricate import Launcher,RecordLinker
-from duplicatesuricate.evaluation import FuncEvaluationModel
-import duplicatesuricate.preprocessing.companycleaning as cc
+import pandas as pd
 
+import duplicatesuricate.preprocessing
+from duplicatesuricate.deduplication import FuncEvaluationModel
+from duplicatesuricate.deduplication import Launcher, RecordLinker
 
 # # Load Data
 
@@ -58,14 +58,14 @@ def cleanfunc(df,coldict):
     for c in formatasstr:
         df[c]=df[c].apply(nm.format_int_to_str)
     c = coldict['duns']
-    df[c]=df[c].apply(cc.cleanduns)
+    df[c]=df[c].apply(duplicatesuricate.preprocessing.cleanduns)
     c = namecol
     df[c]=df[c].apply(nm.format_ascii_lower)
-    df[c+'_wostopwords']=df[c].apply(cc.rmv_companystopwords)
+    df[c+'_wostopwords']=df[c].apply(duplicatesuricate.preprocessing.rmv_companystopwords)
     #df[c+'_len']=df[c].apply(cc.name_len)
     c = streetcol
     df[c]=df[c].apply(nm.format_ascii_lower)
-    df[c+'_wostopwords']=df[c].apply(cc.rmv_streetstopwords)
+    df[c+'_wostopwords']=df[c].apply(duplicatesuricate.preprocessing.rmv_streetstopwords)
     return df
 
 
@@ -117,8 +117,8 @@ displaycols = ['LIFNR', 'NAME1', 'STRAS', 'PSTLZ', 'ORT01', 'LAND1', 'KRAUS', 'S
                'STCD1', 'STCEG', 'VBUND']
 if len(results)>0:
     pd.DataFrame(pd.Series(results)).to_excel(filepath+'results.xlsx')
-    df = Lch.format_results(res=results, fuzzy=[namecol, streetcol],
-                            display=displaycols,ids=id_cols)
+    df = Lch.format_results(res=results, fuzzyscorecols=[namecol, streetcol],
+                            display=displaycols, exactscorecols=id_cols)
     df.to_excel(filepath + 'f40p11sidebyside.xlsx')
 else:
     print('no duplicates')

@@ -1,9 +1,9 @@
-import pandas as pd
 import neatmartinet as nm
-from duplicatesuricate import Launcher,RecordLinker
-from duplicatesuricate.evaluation import FuncEvaluationModel
-import duplicatesuricate.preprocessing.companycleaning as cc
+import pandas as pd
 
+import duplicatesuricate.preprocessing
+from duplicatesuricate.deduplication import FuncEvaluationModel
+from duplicatesuricate.deduplication import Launcher, RecordLinker
 
 # # Load Data
 
@@ -38,14 +38,14 @@ def cleanfunc(df,coldict):
     for c in formatasstr:
         df[c]=df[c].apply(nm.format_int_to_str)
     c = coldict['duns']
-    df[c]=df[c].apply(cc.cleanduns)
+    df[c]=df[c].apply(duplicatesuricate.preprocessing.cleanduns)
     c = namecol
     df[c]=df[c].apply(nm.format_ascii_lower)
-    df[c+'_wostopwords']=df[c].apply(cc.rmv_companystopwords)
+    df[c+'_wostopwords']=df[c].apply(duplicatesuricate.preprocessing.rmv_companystopwords)
     #df[c+'_len']=df[c].apply(cc.name_len)
     c = streetcol
     df[c]=df[c].apply(nm.format_ascii_lower)
-    df[c+'_wostopwords']=df[c].apply(cc.rmv_streetstopwords)
+    df[c+'_wostopwords']=df[c].apply(duplicatesuricate.preprocessing.rmv_streetstopwords)
     return df
 
 
@@ -114,7 +114,7 @@ if results.shape[0]>0:
     Lch = Launcher(input_records=df_target, target_records=df_target, linker=rl)
     rsd = results.to_dict()
     assert isinstance(rsd, dict)
-    df = Lch.format_results(res=rsd, fuzzy=[namecol, streetcol],
+    df = Lch.format_results(res=rsd, fuzzyscorecols=[namecol, streetcol],
                             display=displaycols)
     df.to_excel(filepath + 'f40sidebyside.xlsx')
     df_target[list(set(rl.compared_cols + displaycols))].drop(index=results.index).to_excel(
