@@ -171,14 +171,14 @@ class Suricate:
                     self._results[ix] = y_proba.to_dict()
                     n_deduplicated = len(self._results[ix])
 
-                    # timing
-                    time_end = pd.datetime.now()
-                    duration = (time_end - time_start).total_seconds()
+                # timing
+                time_end = pd.datetime.now()
+                duration = (time_end - time_start).total_seconds()
 
-                    if self.verbose:
-                        print(
-                            '{} of {} inputs records deduplicated | found {} of {} max possible matches | time elapsed {} s'.format(
-                                i + 1, n_total, n_deduplicated, n_matches_max, duration))
+                if self.verbose:
+                    print(
+                        '{} of {} inputs records deduplicated | found {} of {} max possible matches | time elapsed {} s'.format(
+                            i + 1, n_total, n_deduplicated, n_matches_max, duration))
 
             print('finished work at {}'.format(pd.datetime.now()))
         return self._results
@@ -211,7 +211,7 @@ class Suricate:
                     temp = pd.DataFrame(ixs_target).reset_index(drop=True)
                     temp['ix_source'] = ix_source
                     df = pd.concat([df, temp], axis=0, ignore_index=True)
-            df.reset_index(inplace=True,drop=True)
+            df.reset_index(inplace=True, drop=True)
         else:
             df = pd.DataFrame(columns=['ix_source', 'ix_target', 'y_proba'])
             for ix_source in list(res.keys()):
@@ -223,7 +223,7 @@ class Suricate:
                     temp = pd.DataFrame(ixs_target).reset_index(drop=False)
                     temp['ix_source'] = ix_source
                     df = pd.concat([df, temp], axis=0, ignore_index=True)
-            df.reset_index(inplace=True,drop=True)
+            df.reset_index(inplace=True, drop=True)
 
         if df.shape[0] == 0:
             return None
@@ -237,11 +237,11 @@ class Suricate:
             df[c + '_source'] = df['ix_source'].apply(lambda r: self.input_records.loc[r, c])
             df[c + '_target'] = df['ix_target'].apply(lambda r: self.target_records.loc[r, c])
 
-
         if fuzzyscorecols is not None:
             df_fuzzy = pd.DataFrame(index=df.index)
             for c in fuzzyscorecols:
-                df_fuzzy[c + '_fuzzyscore'] = df.apply(lambda r: nm.compare_twostrings(r[c + '_source'], r[c + '_target']), axis=1)
+                df_fuzzy[c + '_fuzzyscore'] = df.apply(
+                    lambda r: nm.compare_twostrings(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
             df_fuzzy['avg_fuzzyscore'] = df_fuzzy.fillna(0).mean(axis=1)
             df = df.join(df_fuzzy)
@@ -258,10 +258,11 @@ class Suricate:
                         elif s == '_target':
                             df[colname] = df['ix' + s].apply(lambda r: self.target_records.loc[r, c])
                 # Calculate the score
-                df_exact[c + '_exactscore'] = df.apply(lambda r: nm.exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
+                df_exact[c + '_exactscore'] = df.apply(lambda r: nm.exactmatch(r[c + '_source'], r[c + '_target']),
+                                                       axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
             df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
-            df=df.join(df_exact)
+            df = df.join(df_exact)
 
         return df
 
@@ -275,6 +276,7 @@ class Suricate:
             display (list): list of columns to be displayed
             fuzzy (list): list of columns on which to perform fuzzy score
             ids (list): list of columns on which to calculate the number of exact_matching
+            return_filtered (bool): if False, all targets row are returned (no filtering step)
         Returns:
             pd.DataFrame
         """
@@ -295,8 +297,7 @@ class Suricate:
 
         return table
 
-    def chain_build_labelled_table(self, inputs, targets, display=None, fuzzy=None, ids=None,
-                                   return_filtered=False):
+    def chain_build_labelled_table(self, inputs, targets, display=None, fuzzy=None, ids=None):
         """
         Create a labelled table
         Args:
@@ -309,7 +310,6 @@ class Suricate:
             pd.DataFrame
 
         """
-        alldata = pd.DataFrame()
         res = {}
         for u, v in zip(inputs, targets):
             res[u] = [v]
@@ -334,7 +334,7 @@ class Suricate:
         training_table_complete = pd.DataFrame(columns=self.linker.score_cols + ['y_true'])
         for t, u, v in zip(inputs, targets, y_true):
             similarity_vector = self.linker.scoringmodel.build_similarity_table(query=self.input_records.loc[t],
-                                                                                on_index=[u],
+                                                                                on_index=pd.Index([u]),
                                                                                 scoredict=scoredict)
             similarity_vector['y_true'] = v
             training_table_complete = pd.concat([training_table_complete, similarity_vector], ignore_index=True, axis=0)
@@ -396,7 +396,8 @@ class RecordLinker:
                                   intermediatethreshold=intermediate_thresholds,
                                   decision_cols=self.evaluationmodel.used_cols)
 
-        # configure the intermediate decision function (Threshold_based or No decision function=let all pass)
+        # configure the intermediate decision function
+        # If threshold: threshold_based, if no : let all pass)
         if intermediate_thresholds is not None:
             decision_int_func = lambda r: threshold_based_decision(row=r, thresholds=intermediate_thresholds)
         else:
@@ -1258,19 +1259,21 @@ class FuncEvaluationModel:
         return y_proba
 
 
-class TrainerModel():
+class TrainerModel:
     def __init__(self, scoredict):
         """
         Create the model
+        used_cols (list): list of columns necessary for decision
+        eval_func (func): evaluation function to be applied. must return a probability vector
         Args:
-            used_cols (list): list of columns necessary for decision
-            eval_func (func): evaluation function to be applied. must return a probability vector
+            scoredict (dict): {'fuzzy':['name','street'],'token':['name_wostopwords'],'acronym':None}
         """
         self.scoredict = scoredict
         compared_cols, used_cols = _unpack_scoredict(scoredict)
         self.used_cols = used_cols
         self.compared_cols = compared_cols
         pass
+
 
 class MLEvaluationModel:
     """
@@ -1372,3 +1375,5 @@ class MLEvaluationModel:
                 pd.DataFrame(self.model.predict_proba(x_score), index=x_score.index)[1]
             assert isinstance(y_proba, pd.Series)
             return y_proba
+
+# Thank you

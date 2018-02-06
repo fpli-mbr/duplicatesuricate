@@ -1,8 +1,6 @@
 import neatmartinet as nm
 import pandas as pd
 
-import duplicatesuricate.preprocessing
-
 companystopwords_list = ['aerospace',
                          'ag',
                          'and',
