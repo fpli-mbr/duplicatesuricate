@@ -1,9 +1,11 @@
-import neatmartinet as nm
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
 from fuzzywuzzy.fuzz import ratio,token_set_ratio
+
+from pyspark.sql.functions import udf, struct,lit
+from pyspark.sql.types import IntegerType,FloatType,StructType,StructField,StringType
 
 class Suricate:
     def __init__(self, input_records,
@@ -249,7 +251,7 @@ class Suricate:
             df_fuzzy = pd.DataFrame(index=res.index)
             for c in fuzzy:
                 df_fuzzy[c + '_fuzzyscore'] = res.apply(
-                    lambda r: fuzzyscore(r[c + '_source'], r[c + '_target']), axis=1)
+                    lambda r: _fuzzyscore(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
             df_fuzzy['avg_fuzzyscore'] = df_fuzzy.fillna(0).mean(axis=1)
             res = res.join(df_fuzzy)
@@ -258,7 +260,7 @@ class Suricate:
             df_exact = pd.DataFrame(index=res.index)
             for c in exact:
                 df_exact[c + '_exactscore'] = res.apply(
-                    lambda r: exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
+                    lambda r: _exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
             df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
             res = res.join(df_exact)
@@ -438,11 +440,12 @@ class RecordLinker:
                                   intermediatethreshold=intermediate_thresholds,
                                   decision_cols=self.evaluationmodel.used_cols)
 
+        self.scoredict=_transform_scorecols_scoredict(self.score_cols)
 
         # configure the intermediate decision function
         # If threshold: threshold_based, if no : let all pass)
         if intermediate_thresholds is not None:
-            decision_int_func = lambda r: threshold_based_decision(row=r, thresholds=intermediate_thresholds)
+            decision_int_func = lambda r: _threshold_based_decision(row=r, thresholds=intermediate_thresholds)
         else:
             decision_int_func = lambda r: 1
 
@@ -458,6 +461,8 @@ class RecordLinker:
         missingcols = list(filter(lambda x: x not in self.scoringmodel.score_cols, self.evaluationmodel.used_cols))
         if len(missingcols) > 0:
             raise KeyError('not all training columns are found in the output of the scorer:', missingcols)
+
+        self.sparkdf=None
         pass
 
     def _calculate_scoredict(self, filterdict, intermediatethreshold, decision_cols):
@@ -491,34 +496,34 @@ class RecordLinker:
                     filterdict[c]=None
             self.filterdict = filterdict
 
-            incols, outcols = transform_scoredict_scorecols(self.filterdict)
+            incols, outcols = _transform_scoredict_scorecols(self.filterdict)
             self.compared_cols += incols
             self.score_cols += outcols
         else:
             self.filterdict = None
 
         if intermediatethreshold is not None and len(intermediatethreshold) > 0:
-            score_intermediate = transform_scorecols_scoredict(existing_cols=self.score_cols,
-                                                               used_cols=list(intermediatethreshold.keys()))
+            score_intermediate = _transform_scorecols_scoredict(existing_cols=self.score_cols,
+                                                                used_cols=list(intermediatethreshold.keys()))
         else:
             score_intermediate = None
 
         if score_intermediate is not None:
             self.intermediate_score = score_intermediate
-            incols, outcols = transform_scoredict_scorecols(self.intermediate_score)
+            incols, outcols = _transform_scoredict_scorecols(self.intermediate_score)
             self.compared_cols += incols
             self.score_cols += outcols
         else:
             self.intermediate_score = None
 
         if decision_cols is not None and len(decision_cols) > 0:
-            score_further = transform_scorecols_scoredict(existing_cols=self.score_cols, used_cols=decision_cols)
+            score_further = _transform_scorecols_scoredict(existing_cols=self.score_cols, used_cols=decision_cols)
         else:
             score_further = None
 
         if score_further is not None:
             self.further_score = score_further
-            incols, outcols = transform_scoredict_scorecols(self.further_score)
+            incols, outcols = _transform_scoredict_scorecols(self.further_score)
             self.compared_cols += incols
             self.score_cols += outcols
         else:
@@ -754,8 +759,47 @@ class RecordLinker:
 
         return scoring_vector
 
+    def _tranform_to_sparkdf(self, sqlContext):
+        #TODO: createschema for pandas
+        schema = StructType(
+            [StructField(c + '_target', StringType(), True) for c in self.compared_cols])
+        ds = sqlContext.createDataFrame(self.df[self.compared_cols], schema=schema)
+        self.sparkdf = ds
 
-def threshold_based_decision(row, thresholds):
+        for c in self.compared_cols:
+            self.sparkdf = self.sparkdf.withColumn(c + '_source', lit(self.query[c]).cast(StringType()))
+
+        fuzzycols=self.scoredict.get('fuzzy')
+        if fuzzycols is not None:
+            for c in fuzzycols:
+                self.sparkdf = self.sparkdf.withColumn(c + '_fuzzyscore',
+                                             _fuzzy_udf(self.sparkdf[c + '_source'], self.sparkdf[c + '_target']))
+        tokencols = self.scoredict.get('token')
+        if tokencols is not None:
+            for c in tokencols:
+                self.sparkdf = self.sparkdf.withColumn(c + '_tokenscore',
+                                             _token_udf(self.sparkdf[c + '_source'], self.sparkdf[c + '_target']))
+        exactcols=self.scoredict.get('exact')
+        if exactcols is not None:
+            for c in exactcols:
+                self.sparkdf = self.sparkdf.withColumn(c + '_exactscore',
+                                             _exact_udf(self.sparkdf[c + '_source'], self.sparkdf[c + '_target']))
+        acronymcols=self.scoredict.get('acronym')
+        if acronymcols is not None:
+            for c in acronymcols:
+                self.sparkdf = self.sparkdf.withColumn(c + '_acronymscore',
+                                             _acronym_udf(self.sparkdf[c + '_source'], self.sparkdf[c + '_target']))
+
+        #TODO: add attributes
+        # attributescols=self.scoredict.get('attributes')
+        # if attributescols is not None:
+        #     for c in attributescols:
+        #         self.sparkdf = self.sparkdf.withColumn(c+'_query',lit(self.query[c].c))
+
+
+
+
+def _threshold_based_decision(row, thresholds):
     """
     if any  (or all values) values of the row are above the thresholds, return 1, else return 0
     Args:
@@ -790,7 +834,7 @@ def threshold_based_decision(row, thresholds):
 
     return result
 
-def convert_fuzzratio(x):
+def _convert_fuzzratio(x):
     """
     convert a ratio between 0 and 100 to a ratio between 1 and -1
     Args:
@@ -802,7 +846,7 @@ def convert_fuzzratio(x):
     score = x/50 -1
     return score
 
-def fuzzyscore(a,b):
+def _fuzzyscore(a, b):
     """
     fuzzyscore using fuzzywuzzy.ratio
     Args:
@@ -815,10 +859,11 @@ def fuzzyscore(a,b):
     if pd.isnull(a) or pd.isnull(b):
         return 0
     else:
-        score = convert_fuzzratio(ratio(a,b))
+        score = _convert_fuzzratio(ratio(a, b))
         return score
 
-def tokenscore(a,b):
+_fuzzy_udf = udf(lambda a,b:_fuzzyscore(a,b),FloatType())
+def _tokenscore(a, b):
     """
     fuzzyscore using fuzzywuzzy.token_set_ratio
     Args:
@@ -831,10 +876,10 @@ def tokenscore(a,b):
     if pd.isnull(a) or pd.isnull(b):
         return 0
     else:
-        score = convert_fuzzratio(token_set_ratio(a,b))
+        score = _convert_fuzzratio(token_set_ratio(a, b))
         return score
-
-def exactmatch(a, b):
+_token_udf = udf(lambda a,b:_tokenscore(a,b),FloatType())
+def _exactmatch(a, b):
     if pd.isnull(a) or pd.isnull(b):
         return 0
     else:
@@ -842,8 +887,24 @@ def exactmatch(a, b):
             return 1
         else:
             return -1
-    
-def compare_acronyme(a, b,minaccrolength=3):
+_exact_udf = udf(lambda a,b:_exactmatch(a,b),FloatType())
+def _acronym(s):
+    """
+    make an acronym of the string: take the first line of each token
+    Args:
+        s (str):
+
+    Returns:
+        str
+    """
+    m = s.split(' ')
+    if m is None:
+        return None
+    else:
+        a = ''.join([s[0] for s in m])
+        return a
+
+def _compare_acronym(a, b, minaccrolength=3):
     """
     compare the acronym of two strings
     Args:
@@ -857,11 +918,11 @@ def compare_acronyme(a, b,minaccrolength=3):
     if pd.isnull(a) or pd.isnull(b):
         return 0
     else:
-        a_acronyme = nm.acronym(a)
-        b_acronyme = nm.acronym(b)
+        a_acronyme = _acronym(a)
+        b_acronyme = _acronym(b)
         if min(len(a_acronyme), len(b_acronyme)) >= minaccrolength:
-            a_score_acronyme = tokenscore(a_acronyme, b)
-            b_score_acronyme = tokenscore(a, b_acronyme)
+            a_score_acronyme = _tokenscore(a_acronyme, b)
+            b_score_acronyme = _tokenscore(a, b_acronyme)
             if all(pd.isnull([a_score_acronyme, b_score_acronyme])):
                 return 0
             else:
@@ -869,17 +930,17 @@ def compare_acronyme(a, b,minaccrolength=3):
                 return max_score
         else:
             return 0
-
+_acronym_udf = udf(lambda a,b:_compare_acronym(a,b),FloatType())
 
 scorename = {'fuzzy': '_fuzzyscore',
              'token': '_tokenscore',
              'exact': '_exactscore',
              'acronym': '_acronymscore'}
 
-scorefuncs = {'fuzzy': fuzzyscore,
-              'token': tokenscore,
-              'exact': exactmatch,
-              'acronym': compare_acronyme}
+scorefuncs = {'fuzzy': _fuzzyscore,
+              'token': _tokenscore,
+              'exact': _exactmatch,
+              'acronym': _compare_acronym}
 scoringkeys = list(scorename.keys())
 
 
@@ -917,7 +978,7 @@ class Scorer:
                     filterdict[c]=None
             self.filterdict = filterdict
 
-            incols, outcols = transform_scoredict_scorecols(self.filterdict)
+            incols, outcols = _transform_scoredict_scorecols(self.filterdict)
             self.compared_cols += incols
             self.score_cols += outcols
         else:
@@ -925,7 +986,7 @@ class Scorer:
 
         if score_intermediate is not None:
             self.intermediate_score = score_intermediate
-            incols, outcols = transform_scoredict_scorecols(self.intermediate_score)
+            incols, outcols = _transform_scoredict_scorecols(self.intermediate_score)
             self.compared_cols += incols
             self.score_cols += outcols
         else:
@@ -933,7 +994,7 @@ class Scorer:
 
         if score_further is not None:
             self.further_score = score_further
-            incols, outcols = transform_scoredict_scorecols(self.further_score)
+            incols, outcols = _transform_scoredict_scorecols(self.further_score)
             self.compared_cols += incols
             self.score_cols += outcols
         else:
@@ -941,7 +1002,7 @@ class Scorer:
 
         ####
 
-        self.total_scoredict = transform_scorecols_scoredict(used_cols=self.score_cols)
+        self.total_scoredict = _transform_scorecols_scoredict(used_cols=self.score_cols)
 
         self.intermediate_func = decision_intermediate
 
@@ -1000,7 +1061,7 @@ class Scorer:
             match_any_df = pd.DataFrame(index=on_index)
             for c in match_any_cols:
                 match_any_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: exactmatch(r, query[c]))
+                    lambda r: _exactmatch(r, query[c]))
             y = (match_any_df == 1)
             assert isinstance(y, pd.DataFrame)
 
@@ -1014,7 +1075,7 @@ class Scorer:
             match_all_df = pd.DataFrame(index=on_index)
             for c in match_all_cols:
                 match_all_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: exactmatch(r, query[c]))
+                    lambda r: _exactmatch(r, query[c]))
             y = (match_all_df == 1)
             assert isinstance(y, pd.DataFrame)
             allcriteriasmatch = y.all(axis=1)
@@ -1217,7 +1278,7 @@ class Scorer:
         return table_score_complete
 
 
-def transform_scoredict_scorecols(scoredict):
+def _transform_scoredict_scorecols(scoredict):
     """
     Calculate, from the scoredict, two lists:
     - the list of the names of columns on which the scoring is performed compared_cols,used_cols
@@ -1260,7 +1321,7 @@ def transform_scoredict_scorecols(scoredict):
     return inputcols, outputcols
 
 
-def transform_scorecols_scoredict(used_cols, existing_cols=None):
+def _transform_scorecols_scoredict(used_cols, existing_cols=None):
     """
     From a set of existing comparison columns and columns needed for a decision function,
     calculate the scoring dict that is needed for the scorer to calculate all the needed columns.
@@ -1335,8 +1396,8 @@ class FuncEvaluationModel:
         self.used_cols = used_cols
         if eval_func is None:
             self.eval_func = lambda r:sum(r)/len(r)
-        self.scoredict=transform_scorecols_scoredict(self.used_cols)
-        self.compared_cols=transform_scoredict_scorecols(self.scoredict)[0]
+        self.scoredict=_transform_scorecols_scoredict(self.used_cols)
+        self.compared_cols=_transform_scoredict_scorecols(self.scoredict)[0]
         pass
 
     def fit(self):
@@ -1364,7 +1425,7 @@ class FuncEvaluationModel:
                         'exact':'id'
                         'acronym':'name'}
         """
-        compared_cols, used_cols = transform_scoredict_scorecols(scoredict)
+        compared_cols, used_cols = _transform_scoredict_scorecols(scoredict)
         x = FuncEvaluationModel(used_cols=used_cols,eval_func=evalfunc)
         return x
 
@@ -1392,7 +1453,6 @@ class FuncEvaluationModel:
 
         return y_proba
 
-
 class TrainerModel:
     def __init__(self, scoredict):
         """
@@ -1403,7 +1463,7 @@ class TrainerModel:
             scoredict (dict): {'fuzzy':['name','street'],'token':['name_wostopwords'],'acronym':None}
         """
         self.scoredict = scoredict
-        compared_cols, used_cols = transform_scoredict_scorecols(scoredict)
+        compared_cols, used_cols = _transform_scoredict_scorecols(scoredict)
         self.used_cols = used_cols
         self.compared_cols = compared_cols
         pass
