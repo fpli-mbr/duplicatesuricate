@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
-
+from fuzzywuzzy.fuzz import ratio,token_set_ratio
 
 class Suricate:
     def __init__(self, input_records,
@@ -98,7 +98,7 @@ class Suricate:
         else:
             return goodmatches_index[:n_matches_max]
 
-    def start_linkage(self, sample_size=10, on_inputs=None, n_matches_max=1, with_proba=False) -> dict:
+    def start_linkage(self, sample_size=10, on_inputs=None, n_matches_max=1, with_proba=False):
         """
         Takes as input an index of the input records, and returns a dict showing their corresponding matches
         on the target records
@@ -157,9 +157,9 @@ class Suricate:
             print('finished work at {}'.format(pd.datetime.now()))
         else:
             # return proba
-            # timing
-            time_start = pd.datetime.now()
             for i, ix in enumerate(on_inputs):
+                # timing
+                time_start = pd.datetime.now()
                 # get the probability vector
                 y_proba = self.linker.predict_proba(query=self.input_records.loc[ix])
                 # if none sve none
@@ -184,67 +184,16 @@ class Suricate:
                             i + 1, n_total, n_deduplicated, n_matches_max, duration))
 
             print('finished work at {}'.format(pd.datetime.now()))
-        return self.unpack_results(self._results)
-
-    def format_results(self, res, display=None, fuzzyscorecols=None, exactscorecols=None, with_proba=False):
-        """
-        Return a formatted, side by side comparison of results
-        Args:
-            res (dict): results {'ix_source_1':['ix_target_2','ix_target_3']} / {'ix_source':{'ix_target1':0.9,'ix_target2':0.5}}
-            display (list): list of columns to be displayed, default self.linker.compared_cols
-            fuzzyscorecols (list): list of columns on which to perform fuzzy score, default None
-            exactscorecols (list): list of columns on which to calculate the number of exact_matching, default None
-            with_proba (bool) : if the result list has a list of probabilities
-        Returns:
-            pd.DataFrame with columns: ['ix_source','ix_target','display_source','display_target','fuzzy_source','fuzzy_target',('y_proba')]
-        """
 
         # Melt the results dictionnary to have the form:
         # df.columns = ['ix_source','ix_target'] if with_proba is false, ['ix_source','ix_target','y_proba' otherwise]
-        df = self.unpack_results(res,with_proba=with_proba)
+        results=self.unpack_results(self._results,with_proba=with_proba)
 
-        if df.shape[0] == 0:
-            return None
-        if display is None:
-            display = self.linker.compared_cols
-        if fuzzyscorecols is None:
-            allcols = display
-        else:
-            allcols = list(set(display + fuzzyscorecols))
-        for c in allcols:
-            df[c + '_source'] = df['ix_source'].apply(lambda r: self.input_records.loc[r, c])
-            df[c + '_target'] = df['ix_target'].apply(lambda r: self.target_records.loc[r, c])
 
-        if fuzzyscorecols is not None:
-            df_fuzzy = pd.DataFrame(index=df.index)
-            for c in fuzzyscorecols:
-                df_fuzzy[c + '_fuzzyscore'] = df.apply(
-                    lambda r: nm.compare_twostrings(r[c + '_source'], r[c + '_target']), axis=1)
-            # after the loop, take the sum of the exact score (n ids matchings)
-            df_fuzzy['avg_fuzzyscore'] = df_fuzzy.fillna(0).mean(axis=1)
-            df = df.join(df_fuzzy)
+        return results
 
-        if exactscorecols is not None:
-            df_exact = pd.DataFrame(index=df.index)
-            for c in exactscorecols:
-                # Make sure columns or in the table
-                for s in ['_source', '_target']:
-                    colname = (c + s)
-                    if colname not in df.columns:
-                        if s == '_source':
-                            df[colname] = df['ix' + s].apply(lambda r: self.input_records.loc[r, c])
-                        elif s == '_target':
-                            df[colname] = df['ix' + s].apply(lambda r: self.target_records.loc[r, c])
-                # Calculate the score
-                df_exact[c + '_exactscore'] = df.apply(lambda r: nm.exactmatch(r[c + '_source'], r[c + '_target']),
-                                                       axis=1)
-            # after the loop, take the sum of the exact score (n ids matchings)
-            df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
-            df = df.join(df_exact)
 
-        return df
-
-    def build_visualcomparison_table(self, inputs, targets, display=None, fuzzy=None, ids=None):
+    def build_visualcomparison_table(self, inputs, targets, display=None, fuzzy=None, exact=None,y_true=None,y_proba=None ):
         """
         Create a comparison table for visual inspection of the results
         Both input index and target index are expected to have the same length
@@ -253,23 +202,85 @@ class Suricate:
             targets (pd.Index): list of target index to be displayed
             display (list): list of columns to be displayed (optional,default self.compared_colds)
             fuzzy (list): list of columns on which to perform fuzzy score (optional, default None)
-            ids (list): list of columns on which to calculate the number of exact_matching (optional, default None)
+            exact (list): list of columns on which to calculate the number of exact_matching (optional, default None)
+            y_true (pd.Series): labelled values (0 or 1) to say if it's a match or not
+            y_proba (pd.Series): probability vector
         Returns:
-            pd.DataFrame ['ix_source','ix_target','display_source','display_target','fuzzy_source','fuzzy_target']
+            pd.DataFrame ['ix_source','ix_target'],['display_source','display_target','fuzzy_source','fuzzy_target']
 
         """
-        res = {}
-        for u, v in zip(inputs, targets):
-            res[u] = [v]
 
-        table = self.format_results(res, display=display, fuzzyscorecols=fuzzy, exactscorecols=ids)
+        if display is None:
+            display = self.linker.compared_cols
+        if fuzzy is None:
+            fuzzy = []
+        if exact is None:
+            exact = []
 
-        #set index
-        table.set_index(['ix_source','ix_target'],inplace=True)
+        allcols = list(set(display + fuzzy + exact))
 
-        return table
 
-    def build_training_table(self, inputs, targets, y_true=None, with_proba = True,scoredict=None,fillna=-1):
+        #take all values from source records
+        res = self.input_records.loc[inputs,allcols].copy()
+        res.columns = [c+'_source' for c in allcols]
+        res['ix_source']=inputs
+
+        # take all values from target records
+        x= self.target_records.loc[targets,allcols].copy()
+        x.columns = [c+'_target' for c in allcols]
+        res['ix_target']=targets
+        res.set_index('ix_target',inplace=True,drop=True)
+        res=res.join(x,how='left')
+        del x
+        res.reset_index(inplace=True,drop=False)
+
+
+        #add the true and the probability vector (optional)
+        if y_true is not None:
+            res['y_true']=y_true
+        if y_proba is not None:
+            res['y_proba']=y_proba
+
+        #use multiIndex
+        res.set_index(['ix_source', 'ix_target'], inplace=True, drop=True)
+
+        #Launch scoring
+        if fuzzy is not None:
+            df_fuzzy = pd.DataFrame(index=res.index)
+            for c in fuzzy:
+                df_fuzzy[c + '_fuzzyscore'] = res.apply(
+                    lambda r: fuzzyscore(r[c + '_source'], r[c + '_target']), axis=1)
+            # after the loop, take the sum of the exact score (n ids matchings)
+            df_fuzzy['avg_fuzzyscore'] = df_fuzzy.fillna(0).mean(axis=1)
+            res = res.join(df_fuzzy)
+
+        if exact is not None:
+            df_exact = pd.DataFrame(index=res.index)
+            for c in exact:
+                df_exact[c + '_exactscore'] = res.apply(
+                    lambda r: exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
+            # after the loop, take the sum of the exact score (n ids matchings)
+            df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
+            res = res.join(df_exact)
+
+        #Sort the columns by order
+        ordered=[]
+        for c in allcols:
+            ordered.append(c+'_source')
+            ordered.append(c+'_target')
+            if c in fuzzy:
+                ordered.append(c+'_fuzzyscore')
+            elif c in exact:
+                ordered.append(c + '_exactscore')
+        missing_cols=sorted(list(filter(lambda x:x not in ordered,res.columns)))
+        ordered+=missing_cols
+
+        res=res.reindex(ordered,axis=1)
+
+
+        return res
+
+    def build_training_table(self, inputs, targets, y_true=None, with_proba = True,scoredict=None,fillna=0):
         """
         Create a scoring table, with a label (y_true), for supervised learning
         inputs, targets,y_true are expected to be of the same length
@@ -279,6 +290,7 @@ class Suricate:
             y_true (pd.Series): labelled values (0 or 1) to say if it's a match or not, optional
             with_proba (bool): gives the probability score calculated by the tool, optional
             scoredict (dict): dictionnary of scores you want to calculate, default self.scoredict
+            fillna (float): float value
 
         Returns:
             pd.DataFrame index=['ix_source','ix_target'],colums=[scores....,'y_true','y_proba']
@@ -376,7 +388,7 @@ class RecordLinker:
     def __init__(self,
                  df, filterdict=None,
                  intermediate_thresholds=None,
-                 fillna=-1,
+                 fillna=0,
                  evaluator=None,
                  decision_threshold=0.5,
                  verbose=True):
@@ -778,23 +790,102 @@ def threshold_based_decision(row, thresholds):
 
     return result
 
+def convert_fuzzratio(x):
+    """
+    convert a ratio between 0 and 100 to a ratio between 1 and -1
+    Args:
+        x (float):
+
+    Returns:
+        float
+    """
+    score = x/50 -1
+    return score
+
+def fuzzyscore(a,b):
+    """
+    fuzzyscore using fuzzywuzzy.ratio
+    Args:
+        a (str):
+        b (str):
+
+    Returns:
+        float score between -1 and 1
+    """
+    if pd.isnull(a) or pd.isnull(b):
+        return 0
+    else:
+        score = convert_fuzzratio(ratio(a,b))
+        return score
+
+def tokenscore(a,b):
+    """
+    fuzzyscore using fuzzywuzzy.token_set_ratio
+    Args:
+        a (str):
+        b (str):
+
+    Returns:
+        float score between -1 and 1
+    """
+    if pd.isnull(a) or pd.isnull(b):
+        return 0
+    else:
+        score = convert_fuzzratio(token_set_ratio(a,b))
+        return score
+
+def exactmatch(a, b):
+    if pd.isnull(a) or pd.isnull(b):
+        return 0
+    else:
+        if a==b:
+            return 1
+        else:
+            return -1
+    
+def compare_acronyme(a, b,minaccrolength=3):
+    """
+    compare the acronym of two strings
+    Args:
+        a (str):
+        b (str):
+        minaccrolength (int): minimum length of accronym
+
+    Returns:
+        float : number between 0 and 1
+    """
+    if pd.isnull(a) or pd.isnull(b):
+        return 0
+    else:
+        a_acronyme = nm.acronym(a)
+        b_acronyme = nm.acronym(b)
+        if min(len(a_acronyme), len(b_acronyme)) >= minaccrolength:
+            a_score_acronyme = tokenscore(a_acronyme, b)
+            b_score_acronyme = tokenscore(a, b_acronyme)
+            if all(pd.isnull([a_score_acronyme, b_score_acronyme])):
+                return 0
+            else:
+                max_score = np.max([a_score_acronyme, b_score_acronyme])
+                return max_score
+        else:
+            return 0
+
 
 scorename = {'fuzzy': '_fuzzyscore',
              'token': '_tokenscore',
              'exact': '_exactscore',
-             'acronym': '_acronymscore',
-             'attributes':'na'}
-scorefuncs = {'fuzzy': nm.compare_twostrings,
-              'token': nm.compare_tokenized_strings,
-              'exact': nm.exactmatch,
-              'acronym': nm.compare_acronyme,
-              'attributes':'na'}
+             'acronym': '_acronymscore'}
+
+scorefuncs = {'fuzzy': fuzzyscore,
+              'token': tokenscore,
+              'exact': exactmatch,
+              'acronym': compare_acronyme}
 scoringkeys = list(scorename.keys())
 
 
 class Scorer:
     def __init__(self, df, filterdict=None, score_intermediate=None, decision_intermediate=None, score_further=None,
-                 fillna=-1):
+                 fillna=0):
         """
         This class is used to calculate similarity tables between a reference table and a possible query.
         It has three main steps in proceeding:
@@ -909,7 +1000,7 @@ class Scorer:
             match_any_df = pd.DataFrame(index=on_index)
             for c in match_any_cols:
                 match_any_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: nm.exactmatch(r, query[c]))
+                    lambda r: exactmatch(r, query[c]))
             y = (match_any_df == 1)
             assert isinstance(y, pd.DataFrame)
 
@@ -923,7 +1014,7 @@ class Scorer:
             match_all_df = pd.DataFrame(index=on_index)
             for c in match_all_cols:
                 match_all_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: nm.exactmatch(r, query[c]))
+                    lambda r: exactmatch(r, query[c]))
             y = (match_all_df == 1)
             assert isinstance(y, pd.DataFrame)
             allcriteriasmatch = y.all(axis=1)
@@ -985,10 +1076,9 @@ class Scorer:
                 table_score[c + '_target'] = self.df.loc[on_index, c]
 
         for c in scoringkeys:
-            if c!='attributes':
-                table = self._compare(query, on_index=on_index, on_cols=scoredict.get(c), func=scorefuncs[c],
-                                      suffix=scorename[c])
-                table_score = pd.concat([table_score, table], axis=1)
+            table = self._compare(query, on_index=on_index, on_cols=scoredict.get(c), func=scorefuncs[c],
+                                  suffix=scorename[c])
+            table_score = pd.concat([table_score, table], axis=1)
 
         return table_score
 
@@ -1163,11 +1253,10 @@ def transform_scoredict_scorecols(scoredict):
             outputcols.append(c + '_source')
             outputcols.append(c + '_target')
     for k in scorename.keys():
-        if k != 'attributes':
-            if scoredict.get(k) is not None:
-                for c in scoredict[k]:
-                    inputcols.append(c)
-                    outputcols.append(c + scorename[k])
+        if scoredict.get(k) is not None:
+            for c in scoredict[k]:
+                inputcols.append(c)
+                outputcols.append(c + scorename[k])
     return inputcols, outputcols
 
 
@@ -1260,7 +1349,6 @@ class FuncEvaluationModel:
 
     @classmethod
     def from_dict(cls, scoredict,evalfunc=None):
-        # TODO: to check it works
         """
         Args:
             scoredict (dict): scoretype_dictionnary
