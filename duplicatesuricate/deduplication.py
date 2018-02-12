@@ -2,10 +2,11 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
-from fuzzywuzzy.fuzz import ratio,token_set_ratio
+from fuzzywuzzy.fuzz import ratio, token_set_ratio
 
-from pyspark.sql.functions import udf, struct,lit
-from pyspark.sql.types import IntegerType,FloatType,StructType,StructField,StringType
+from pyspark.sql.functions import udf, struct, lit
+from pyspark.sql.types import IntegerType, FloatType, StructType, StructField, StringType, BooleanType
+
 
 class Suricate:
     def __init__(self, input_records,
@@ -189,13 +190,12 @@ class Suricate:
 
         # Melt the results dictionnary to have the form:
         # df.columns = ['ix_source','ix_target'] if with_proba is false, ['ix_source','ix_target','y_proba' otherwise]
-        results=self.unpack_results(self._results,with_proba=with_proba)
-
+        results = self.unpack_results(self._results, with_proba=with_proba)
 
         return results
 
-
-    def build_visualcomparison_table(self, inputs, targets, display=None, fuzzy=None, exact=None,y_true=None,y_proba=None ):
+    def build_visualcomparison_table(self, inputs, targets, display=None, fuzzy=None, exact=None, y_true=None,
+                                     y_proba=None):
         """
         Create a comparison table for visual inspection of the results
         Both input index and target index are expected to have the same length
@@ -221,32 +221,30 @@ class Suricate:
 
         allcols = list(set(display + fuzzy + exact))
 
-
-        #take all values from source records
-        res = self.input_records.loc[inputs,allcols].copy()
-        res.columns = [c+'_source' for c in allcols]
-        res['ix_source']=inputs
+        # take all values from source records
+        res = self.input_records.loc[inputs, allcols].copy()
+        res.columns = [c + '_source' for c in allcols]
+        res['ix_source'] = inputs
 
         # take all values from target records
-        x= self.target_records.loc[targets,allcols].copy()
-        x.columns = [c+'_target' for c in allcols]
-        res['ix_target']=targets
-        res.set_index('ix_target',inplace=True,drop=True)
-        res=res.join(x,how='left')
+        x = self.target_records.loc[targets, allcols].copy()
+        x.columns = [c + '_target' for c in allcols]
+        res['ix_target'] = targets
+        res.set_index('ix_target', inplace=True, drop=True)
+        res = res.join(x, how='left')
         del x
-        res.reset_index(inplace=True,drop=False)
+        res.reset_index(inplace=True, drop=False)
 
-
-        #add the true and the probability vector (optional)
+        # add the true and the probability vector (optional)
         if y_true is not None:
-            res['y_true']=y_true
+            res['y_true'] = y_true
         if y_proba is not None:
-            res['y_proba']=y_proba
+            res['y_proba'] = y_proba
 
-        #use multiIndex
+        # use multiIndex
         res.set_index(['ix_source', 'ix_target'], inplace=True, drop=True)
 
-        #Launch scoring
+        # Launch scoring
         if fuzzy is not None:
             df_fuzzy = pd.DataFrame(index=res.index)
             for c in fuzzy:
@@ -265,24 +263,23 @@ class Suricate:
             df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
             res = res.join(df_exact)
 
-        #Sort the columns by order
-        ordered=[]
+        # Sort the columns by order
+        ordered = []
         for c in allcols:
-            ordered.append(c+'_source')
-            ordered.append(c+'_target')
+            ordered.append(c + '_source')
+            ordered.append(c + '_target')
             if c in fuzzy:
-                ordered.append(c+'_fuzzyscore')
+                ordered.append(c + '_fuzzyscore')
             elif c in exact:
                 ordered.append(c + '_exactscore')
-        missing_cols=sorted(list(filter(lambda x:x not in ordered,res.columns)))
-        ordered+=missing_cols
+        missing_cols = sorted(list(filter(lambda x: x not in ordered, res.columns)))
+        ordered += missing_cols
 
-        res=res.reindex(ordered,axis=1)
-
+        res = res.reindex(ordered, axis=1)
 
         return res
 
-    def build_training_table(self, inputs, targets, y_true=None, with_proba = True,scoredict=None,fillna=0):
+    def build_training_table(self, inputs, targets, y_true=None, with_proba=True, scoredict=None, fillna=0):
         """
         Create a scoring table, with a label (y_true), for supervised learning
         inputs, targets,y_true are expected to be of the same length
@@ -303,27 +300,27 @@ class Suricate:
             similarity_vector = self.linker.scoringmodel.build_similarity_table(query=self.input_records.loc[t],
                                                                                 on_index=pd.Index([u]),
                                                                                 scoredict=scoredict)
-            similarity_vector['ix_source']=t
+            similarity_vector['ix_source'] = t
             similarity_vector['ix_target'] = u
             training_table_complete = pd.concat([training_table_complete, similarity_vector], ignore_index=True, axis=0)
 
-        #fillna
-        training_table_complete.fillna(fillna,inplace=True)
+        # fillna
+        training_table_complete.fillna(fillna, inplace=True)
 
         # calculate the probability vector
         if with_proba:
             X_train = training_table_complete[self.linker.score_cols]
             y_proba = self.linker.evaluationmodel.predict_proba(X_train)
-            training_table_complete['y_proba']=y_proba
+            training_table_complete['y_proba'] = y_proba
         if y_true is not None:
             training_table_complete['y_true'] = y_true
 
-        #set index
-        training_table_complete.set_index(['ix_source','ix_target'],inplace=True)
+        # set index
+        training_table_complete.set_index(['ix_source', 'ix_target'], inplace=True)
 
         return training_table_complete
 
-    def unpack_results(self,res,with_proba=False):
+    def unpack_results(self, res, with_proba=False):
         """
         Transform the dictionary_like output from start_linkage into a pd.DataFrame
         Format the results dictionnary to have the form:
@@ -362,7 +359,7 @@ class Suricate:
             df.reset_index(inplace=True, drop=True)
         return df
 
-    def build_combined_table(self,inputs,targets,with_proba=False,y_true=None):
+    def build_combined_table(self, inputs, targets, with_proba=False, y_true=None):
         """
         Combine a side-by-side visual comparison table (build_visualcomparison_table)
         And a scoring table created by build_training_table
@@ -376,14 +373,13 @@ class Suricate:
             pd.DataFrame
         """
         visual_table = self.build_visualcomparison_table(inputs=inputs,
-                                                            targets=targets)
+                                                         targets=targets)
         scored_table = self.build_training_table(inputs=inputs,
                                                  targets=targets,
                                                  with_proba=with_proba,
                                                  y_true=y_true)
-        combined_table = visual_table.join(scored_table,rsuffix='_fromscoretable',how='left')
+        combined_table = visual_table.join(scored_table, rsuffix='_fromscoretable', how='left')
         return combined_table
-
 
 
 class RecordLinker:
@@ -440,7 +436,7 @@ class RecordLinker:
                                   intermediatethreshold=intermediate_thresholds,
                                   decision_cols=self.evaluationmodel.used_cols)
 
-        self.scoredict=_transform_scorecols_scoredict(self.score_cols)
+        self.scoredict = _transform_scorecols_scoredict(self.score_cols)
 
         # configure the intermediate decision function
         # If threshold: threshold_based, if no : let all pass)
@@ -462,7 +458,7 @@ class RecordLinker:
         if len(missingcols) > 0:
             raise KeyError('not all training columns are found in the output of the scorer:', missingcols)
 
-        self.sparkdf=None
+        self.sparkdf = None
         pass
 
     def _calculate_scoredict(self, filterdict, intermediatethreshold, decision_cols):
@@ -489,11 +485,10 @@ class RecordLinker:
         self.compared_cols = []
         self.score_cols = []
 
-
         if filterdict is not None:
-            for c in ['all','any']:
+            for c in ['all', 'any']:
                 if filterdict.get(c) is None:
-                    filterdict[c]=None
+                    filterdict[c] = None
             self.filterdict = filterdict
 
             incols, outcols = _transform_scoredict_scorecols(self.filterdict)
@@ -758,45 +753,79 @@ class RecordLinker:
                                                                   scoredict=scoredict)
 
         return scoring_vector
+    def _prepare_spark(self,sqlContext):
+        """
+        Initialize a .sparkdf attribute
+        Args:
+            sqlContext (pyspark.sql.context.SQLContext):
 
-    def _tranform_to_sparkdf(self, sqlContext):
-        #TODO: createschema for pandas
-        schema = StructType(
-            [StructField(c + '_target', StringType(), True) for c in self.compared_cols])
+        Returns:
+            None
+        """
+
+        schema = []
+        for c in self.compared_cols:
+            mytype=_sparktypedict[self.df[c].dtype]
+            mycol = StructField(name=c, dataType=mytype, nullable=True)
+            schema.append(mycol)
+        schema = StructType(schema)
         ds = sqlContext.createDataFrame(self.df[self.compared_cols], schema=schema)
-        self.sparkdf = ds
 
         for c in self.compared_cols:
-            self.sparkdf = self.sparkdf.withColumn(c + '_source', lit(self.query[c]).cast(StringType()))
+            ds = ds.withColumnRenamed(existing=c,new=c+"_target")
+        self.sparkdf = ds
 
-        fuzzycols=self.scoredict.get('fuzzy')
+    def _compare_spark(self, query):
+        """
+        Initialize a .sparkdf attribute
+        Args:
+            query (pd.Series):
+
+        Returns:
+
+        """
+        for c in self.compared_cols:
+            mytype = _sparktypedict[type(query[c])]
+            self.sparkdf = self.sparkdf.withColumn(c + '_source', lit(query[c]).cast(mytype))
+
+        fuzzycols = self.scoredict.get('fuzzy')
         if fuzzycols is not None:
             for c in fuzzycols:
                 self.sparkdf = self.sparkdf.withColumn(c + '_fuzzyscore',
-                                             _fuzzy_udf(self.sparkdf[c + '_source'], self.sparkdf[c + '_target']))
+                                                       _fuzzy_udf(self.sparkdf[c + '_source'],
+                                                                  self.sparkdf[c + '_target']))
         tokencols = self.scoredict.get('token')
         if tokencols is not None:
             for c in tokencols:
                 self.sparkdf = self.sparkdf.withColumn(c + '_tokenscore',
-                                             _token_udf(self.sparkdf[c + '_source'], self.sparkdf[c + '_target']))
-        exactcols=self.scoredict.get('exact')
+                                                       _token_udf(self.sparkdf[c + '_source'],
+                                                                  self.sparkdf[c + '_target']))
+        exactcols = self.scoredict.get('exact')
         if exactcols is not None:
             for c in exactcols:
                 self.sparkdf = self.sparkdf.withColumn(c + '_exactscore',
-                                             _exact_udf(self.sparkdf[c + '_source'], self.sparkdf[c + '_target']))
-        acronymcols=self.scoredict.get('acronym')
+                                                       _exact_udf(self.sparkdf[c + '_source'],
+                                                                  self.sparkdf[c + '_target']))
+        acronymcols = self.scoredict.get('acronym')
         if acronymcols is not None:
             for c in acronymcols:
                 self.sparkdf = self.sparkdf.withColumn(c + '_acronymscore',
-                                             _acronym_udf(self.sparkdf[c + '_source'], self.sparkdf[c + '_target']))
+                                                       _acronym_udf(self.sparkdf[c + '_source'],
+                                                                    self.sparkdf[c + '_target']))
 
-        #TODO: add attributes
+        self.sparkdf = self.sparkdf.select(self.score_cols)
+        ## TODO: add attributes
+        # think how to initialize form pandas dataframe and then transform it as float
         # attributescols=self.scoredict.get('attributes')
         # if attributescols is not None:
         #     for c in attributescols:
         #         self.sparkdf = self.sparkdf.withColumn(c+'_query',lit(self.query[c].c))
 
+        return None
 
+    def _spark_predict_proba(self,query):
+        score_proba = self.sparkdf
+        pass
 
 
 def _threshold_based_decision(row, thresholds):
@@ -834,6 +863,7 @@ def _threshold_based_decision(row, thresholds):
 
     return result
 
+
 def _convert_fuzzratio(x):
     """
     convert a ratio between 0 and 100 to a ratio between 1 and -1
@@ -843,8 +873,9 @@ def _convert_fuzzratio(x):
     Returns:
         float
     """
-    score = x/50 -1
+    score = x / 50 - 1
     return score
+
 
 def _fuzzyscore(a, b):
     """
@@ -857,12 +888,15 @@ def _fuzzyscore(a, b):
         float score between -1 and 1
     """
     if pd.isnull(a) or pd.isnull(b):
-        return 0
+        return 0.0
     else:
         score = _convert_fuzzratio(ratio(a, b))
         return score
 
-_fuzzy_udf = udf(lambda a,b:_fuzzyscore(a,b),FloatType())
+
+_fuzzy_udf = udf(lambda a, b: _fuzzyscore(a, b), FloatType())
+
+
 def _tokenscore(a, b):
     """
     fuzzyscore using fuzzywuzzy.token_set_ratio
@@ -874,20 +908,28 @@ def _tokenscore(a, b):
         float score between -1 and 1
     """
     if pd.isnull(a) or pd.isnull(b):
-        return 0
+        return 0.0
     else:
         score = _convert_fuzzratio(token_set_ratio(a, b))
         return score
-_token_udf = udf(lambda a,b:_tokenscore(a,b),FloatType())
+
+
+_token_udf = udf(lambda a, b: _tokenscore(a, b), FloatType())
+
+
 def _exactmatch(a, b):
     if pd.isnull(a) or pd.isnull(b):
-        return 0
+        return 0.0
     else:
-        if a==b:
-            return 1
+        if a == b:
+            return 1.0
         else:
-            return -1
-_exact_udf = udf(lambda a,b:_exactmatch(a,b),FloatType())
+            return -1.0
+
+
+_exact_udf = udf(lambda a, b: _exactmatch(a, b), FloatType())
+
+
 def _acronym(s):
     """
     make an acronym of the string: take the first line of each token
@@ -904,6 +946,7 @@ def _acronym(s):
         a = ''.join([s[0] for s in m])
         return a
 
+
 def _compare_acronym(a, b, minaccrolength=3):
     """
     compare the acronym of two strings
@@ -916,7 +959,7 @@ def _compare_acronym(a, b, minaccrolength=3):
         float : number between 0 and 1
     """
     if pd.isnull(a) or pd.isnull(b):
-        return 0
+        return 0.0
     else:
         a_acronyme = _acronym(a)
         b_acronyme = _acronym(b)
@@ -924,13 +967,15 @@ def _compare_acronym(a, b, minaccrolength=3):
             a_score_acronyme = _tokenscore(a_acronyme, b)
             b_score_acronyme = _tokenscore(a, b_acronyme)
             if all(pd.isnull([a_score_acronyme, b_score_acronyme])):
-                return 0
+                return 0.0
             else:
                 max_score = np.max([a_score_acronyme, b_score_acronyme])
                 return max_score
         else:
-            return 0
-_acronym_udf = udf(lambda a,b:_compare_acronym(a,b),FloatType())
+            return 0.0
+
+
+_acronym_udf = udf(lambda a, b: _compare_acronym(a, b), FloatType())
 
 scorename = {'fuzzy': '_fuzzyscore',
              'token': '_tokenscore',
@@ -973,9 +1018,9 @@ class Scorer:
 
         ###
         if filterdict is not None:
-            for c in ['all','any']:
+            for c in ['all', 'any']:
                 if filterdict.get(c) is None:
-                    filterdict[c]=None
+                    filterdict[c] = None
             self.filterdict = filterdict
 
             incols, outcols = _transform_scoredict_scorecols(self.filterdict)
@@ -1347,17 +1392,17 @@ def _transform_scorecols_scoredict(used_cols, existing_cols=None):
     def _findscoreinfo(colname):
         if colname.endswith('_target'):
             k = 'attributes'
-            u = nm.rmv_end_str(colname, '_target')
-            return k,u
+            u = rmv_end_str(colname, '_target')
+            return k, u
         elif colname.endswith('_source'):
             k = 'attributes'
-            u = nm.rmv_end_str(colname, '_source')
+            u = rmv_end_str(colname, '_source')
             return k, u
         elif colname.endswith('score'):
-            u = nm.rmv_end_str(colname, 'score')
+            u = rmv_end_str(colname, 'score')
             for k in ['fuzzy', 'token', 'exact', 'acronym']:
                 if u.endswith('_' + k):
-                    u = nm.rmv_end_str(u, '_' + k)
+                    u = rmv_end_str(u, '_' + k)
                     return k, u
         else:
             return None
@@ -1395,9 +1440,9 @@ class FuncEvaluationModel:
         """
         self.used_cols = used_cols
         if eval_func is None:
-            self.eval_func = lambda r:sum(r)/len(r)
-        self.scoredict=_transform_scorecols_scoredict(self.used_cols)
-        self.compared_cols=_transform_scoredict_scorecols(self.scoredict)[0]
+            self.eval_func = lambda r: sum(r) / len(r)
+        self.scoredict = _transform_scorecols_scoredict(self.used_cols)
+        self.compared_cols = _transform_scoredict_scorecols(self.scoredict)[0]
         pass
 
     def fit(self):
@@ -1409,7 +1454,7 @@ class FuncEvaluationModel:
         pass
 
     @classmethod
-    def from_dict(cls, scoredict,evalfunc=None):
+    def from_dict(cls, scoredict, evalfunc=None):
         """
         Args:
             scoredict (dict): scoretype_dictionnary
@@ -1426,9 +1471,8 @@ class FuncEvaluationModel:
                         'acronym':'name'}
         """
         compared_cols, used_cols = _transform_scoredict_scorecols(scoredict)
-        x = FuncEvaluationModel(used_cols=used_cols,eval_func=evalfunc)
+        x = FuncEvaluationModel(used_cols=used_cols, eval_func=evalfunc)
         return x
-
 
     def predict_proba(self, x_score):
         """
@@ -1453,6 +1497,7 @@ class FuncEvaluationModel:
 
         return y_proba
 
+
 class TrainerModel:
     def __init__(self, scoredict):
         """
@@ -1467,6 +1512,7 @@ class TrainerModel:
         self.used_cols = used_cols
         self.compared_cols = compared_cols
         pass
+
 
 class MLEvaluationModel:
     """
@@ -1568,6 +1614,32 @@ class MLEvaluationModel:
                 pd.DataFrame(self.model.predict_proba(x_score), index=x_score.index)[1]
             assert isinstance(y_proba, pd.Series)
             return y_proba
+
+
+
+
+def rmv_end_str(w, s):
+    """
+    remove str at the end of tken
+    :param w: str, token to be cleaned
+    :param s: str, string to be removed
+    :return: str
+    """
+    if w.endswith(s):
+        w = w[:-len(s)]
+    return w
+
+
+_sparktypedict = {}
+_sparktypedict[np.dtype('O')]= StringType()
+_sparktypedict[np.dtype('int64')]= IntegerType()
+_sparktypedict[np.dtype('float64')]= FloatType()
+_sparktypedict[np.dtype('bool')]= BooleanType()
+
+_sparktypedict[str]= StringType()
+_sparktypedict[int]= IntegerType()
+_sparktypedict[float]= FloatType()
+_sparktypedict[bool]= BooleanType()
 
 
 # Thank you
