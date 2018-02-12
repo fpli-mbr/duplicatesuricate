@@ -247,22 +247,24 @@ class Suricate:
         res.set_index(['ix_source', 'ix_target'], inplace=True, drop=True)
 
         # Launch scoring
-        if fuzzy is not None:
+        if len(fuzzy)>0:
             df_fuzzy = pd.DataFrame(index=res.index)
             for c in fuzzy:
                 df_fuzzy[c + '_fuzzyscore'] = res.apply(
                     lambda r: _fuzzyscore(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
-            df_fuzzy['avg_fuzzyscore'] = df_fuzzy.fillna(0).mean(axis=1)
+            if len(fuzzy)>1:
+                df_fuzzy['avg_fuzzyscore'] = df_fuzzy.fillna(0).mean(axis=1)
             res = res.join(df_fuzzy)
 
-        if exact is not None:
+        if len(exact)>0:
             df_exact = pd.DataFrame(index=res.index)
             for c in exact:
                 df_exact[c + '_exactscore'] = res.apply(
                     lambda r: _exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
-            df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
+            if len(exact)>1:
+                df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
             res = res.join(df_exact)
 
         # Sort the columns by order
