@@ -229,17 +229,19 @@ class Suricate:
         # take all values from target records
         x = self.target_records.loc[targets, allcols].copy()
         x.columns = [c + '_target' for c in allcols]
+        x.index.name='ix_target'
         res['ix_target'] = targets
         res.set_index('ix_target', inplace=True, drop=True)
-        res = res.join(x, how='left')
+        res.index.name='ix_target'
+        res = pd.concat([res,x],axis=1)
         del x
         res.reset_index(inplace=True, drop=False)
 
         # add the true and the probability vector (optional)
         if y_true is not None:
-            res['y_true'] = y_true
+            res['y_true'] = np.array(y_true)
         if y_proba is not None:
-            res['y_proba'] = y_proba
+            res['y_proba'] = np.array(y_proba)
 
         # use multiIndex
         res.set_index(['ix_source', 'ix_target'], inplace=True, drop=True)
