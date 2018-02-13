@@ -329,7 +329,7 @@ class Suricate:
         Transform the dictionary_like output from start_linkage into a pd.DataFrame
         Format the results dictionnary to have the form:
         df.columns = ['ix_source','ix_target'] if with_proba is false, ['ix_source','ix_target','y_proba' otherwise]
-
+        Will drop ix_source with no matches
         Args:
             res (dict): results {'ix_source_1':['ix_target_2','ix_target_3']} / {'ix_source':{'ix_target1':0.9,'ix_target2':0.5}}
             with_proba (bool): if the result dictionnary contains a probability vector
@@ -1525,7 +1525,6 @@ class MLEvaluationModel:
 
     Examples:
         dm = MLEvaluationModel()
-        x_train,y_train=dm.load_training_data('mytrainingdata.csv',targetcol='ismatch')
         dm.fit(x_train,y_train)
         x_score = compare(query,target_records) where compare creates a similarity table
         y_proba = dm.predict_proba(x_score)
@@ -1619,7 +1618,106 @@ class MLEvaluationModel:
             assert isinstance(y_proba, pd.Series)
             return y_proba
 
+class SparkMLEvaluationModel():
+    """
+    The evaluation model is based on spark-powered machine learning, it is an implementation of the Random Forest algorithm.
+    It requires to be fitted on a training table before making decision.
 
+    Examples:
+        dm = MLEvaluationModel()
+        x_train,y_train=dm.load_training_data('mytrainingdata.csv',targetcol='ismatch')
+        dm.fit(x_train,y_train)
+        x_score = compare(query,target_records) where compare creates a similarity table
+        y_proba = dm.predict_proba(x_score)
+    """
+
+    def __init__(self, verbose=True,
+                 n_estimators=2000, model=None):
+        """
+        Create the model
+        Args:
+            verbose (bool): control print output
+            n_estimators (int): number of estimators for the Random Forest Algorithm
+            model: sklearn classifier model, default RandomForrest
+        """
+        self.verbose = verbose
+        if model is None:
+            self.model = RandomForestClassifier(n_estimators=n_estimators)
+        else:
+            self.model = model
+        self.used_cols = []
+
+        pass
+
+    def fit(self, X, y):
+        """
+        fit the machine learning evaluation model on the provided data set.
+        It takes as input a training table with numeric values calculated from previous examples.
+        Args:
+            X (pd.DataFrame): pandas DataFrame containing annotated data
+            y (pd.Series):name of the target vector in the training_set
+
+        Returns:
+            None
+
+        """
+
+        self.used_cols = X.columns
+
+        start = pd.datetime.now()
+
+        if self.verbose:
+            print('shape of training table ', X.shape)
+            print('number of positives in table', y.sum())
+
+        # fit the evaluationmodel
+        self.model.fit(X, y)
+
+        if self.verbose:
+            # show precision and recall score of the evaluationmodel on training data
+            y_pred = self.model.predict(X)
+            precision = precision_score(y_true=y, y_pred=y_pred)
+            recall = recall_score(y_true=y, y_pred=y_pred)
+            print('precision score on training data:', precision)
+            print('recall score on training data:', recall)
+
+        if self.verbose:
+            end = pd.datetime.now()
+            duration = (end - start).total_seconds()
+            print('time elapsed', duration, 'seconds')
+
+        return None
+
+    def predict_proba(self, x_score):
+        """
+        This is the evaluation function.
+        It takes as input a DataFrame with each row being the similarity score between the query and the target records.
+        It returns a series with the probability vector that the target records is the same as the query.
+        The scoring table must not have na values.
+        The scoring tables column names must fit the training table column names. (accessible via self.decisioncols).
+        If x_score is None or has no rows it returns None.
+        Args:
+            x_score (pd.DataFrame): the table containing the scoring records
+
+        Returns:
+            pd.Series : the probability vector of the target records being the same as the query
+
+        """
+        if x_score is None or x_score.shape[0] == 0:
+            return None
+        else:
+            missing_cols = list(filter(lambda x: x not in x_score.columns, self.used_cols))
+            if len(missing_cols) > 0:
+                raise KeyError('not all training columns are found in the output of the scorer:', missing_cols)
+
+            # re-arrange the column order
+            x_score = x_score[self.used_cols]
+
+            # launch prediction using the predict_proba of the scikit-learn module
+            y_proba = \
+                pd.DataFrame(self.model.predict_proba(x_score), index=x_score.index)[1]
+            assert isinstance(y_proba, pd.Series)
+            return y_proba
 
 
 def rmv_end_str(w, s):
