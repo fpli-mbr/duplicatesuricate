@@ -14,17 +14,17 @@ from pyspark.ml import Pipeline
 class Suricate:
     def __init__(self, input_records,
                  target_records,
-                 model,
+                 classifier,
                  filterdict=None,
                  intermediate_thresholds=None,
                  cleanfunc=None,
-                 idcol='gid', queryidcol='queryid', decision_threshold=0.5, verbose=True,spark=False):
+                 idcol='gid', queryidcol='queryid', decision_threshold=0.5, verbose=True, spark=False):
         """
         Main class used for deduplication
         Args:
             input_records (pd.DataFrame): Input table for record linkage, records to link
             target_records (pd.DataFrame): Table of reference for record linkage
-            model: evaluation model, has a .predict_proba and a .used_cols function
+            classifier: evaluation classifier, has a .predict_proba and a .used_cols function
             filterdict (dict): define the all/any logic used detailed in filter_all_any {'all':['country_code'],'any':['duns']}
             intermediate_thresholds(dict): add an intermediary filter {'name_fuzzyscore':0.8}
             cleanfunc: cleaning function used for the databases
@@ -43,7 +43,7 @@ class Suricate:
         self.linker = RecordLinker(df=self.target_records,
                                    filterdict=filterdict,
                                    intermediate_thresholds=intermediate_thresholds,
-                                   classifier=model, decision_threshold=decision_threshold
+                                   classifier=classifier, decision_threshold=decision_threshold
                                    )
 
         missingcols = list(filter(lambda x: x not in self.input_records.columns, self.linker.compared_cols))
@@ -1531,7 +1531,29 @@ class DummyClassifier:
         self.used_cols = used_cols
         self.compared_cols = compared_cols
         pass
+    def fit(self,X,y):
+        """
+        Do nothing
+        Args:
+            X:
+            y:
 
+        Returns:
+
+        """
+        pass
+    def predict_proba(self,X):
+        """
+        A dart-throwing chump generates a random probability vector for the sake of coherency with other classifier
+        Args:
+            X:
+
+        Returns:
+            pd.Series
+        """
+        y_proba = np.random.random(size=X.shape[0])
+        y_proba=pd.Series(y_proba,index=X.shape[0])
+        return y_proba
 
 class ScikitLearnClassifier:
     """
@@ -1699,7 +1721,7 @@ class SparkClassifier():
 
         if self.verbose:
             # show precision and recall score of the classifier on training data
-            y_pred = self.predict_proba(X)
+            y_pred = self.predict_proba(Xs,index_col=None)
             y_pred= (y_pred > 0.5)
             assert isinstance(y_pred,pd.Series)
             precision = precision_score(y_true=y, y_pred=y_pred)
