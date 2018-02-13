@@ -18,5 +18,5 @@ setup(name='duplicatesuricate',
           'Intended Audience :: Developers',
           'Topic :: Utilities'
       ],
-      install_requires=['neatmartinet', 'pandas', 'numpy', 'fuzzywuzzy','scikit-learn']
+      install_requires=['neatmartinet', 'pandas', 'numpy', 'fuzzywuzzy','scikit-learn','pyspark']
       )
