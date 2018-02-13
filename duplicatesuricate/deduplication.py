@@ -18,9 +18,9 @@ class Suricate:
                  filterdict=None,
                  intermediate_thresholds=None,
                  cleanfunc=None,
-                 idcol='groupid', queryidcol='queryid', decision_threshold=0.5, verbose=True,spark=False):
+                 idcol='gid', queryidcol='queryid', decision_threshold=0.5, verbose=True,spark=False):
         """
-
+        Main class used for deduplication
         Args:
             input_records (pd.DataFrame): Input table for record linkage, records to link
             target_records (pd.DataFrame): Table of reference for record linkage
@@ -43,7 +43,7 @@ class Suricate:
         self.linker = RecordLinker(df=self.target_records,
                                    filterdict=filterdict,
                                    intermediate_thresholds=intermediate_thresholds,
-                                   evaluator=model, decision_threshold=decision_threshold
+                                   classifier=model, decision_threshold=decision_threshold
                                    )
 
         missingcols = list(filter(lambda x: x not in self.input_records.columns, self.linker.compared_cols))
@@ -322,7 +322,7 @@ class Suricate:
         # calculate the probability vector
         if with_proba:
             X_train = training_table_complete[self.linker.score_cols]
-            y_proba = self.linker.evaluationmodel.predict_proba(X_train)
+            y_proba = self.linker.classifier.predict_proba(X_train)
             training_table_complete['y_proba'] = y_proba
         if y_true is not None:
             training_table_complete['y_true'] = y_true
@@ -399,11 +399,11 @@ class RecordLinker:
                  df, filterdict=None,
                  intermediate_thresholds=None,
                  fillna=0,
-                 evaluator=None,
+                 classifier=None,
                  decision_threshold=0.5,
                  verbose=True):
         """
-        This class merges together the Scorer and the Evaluation model.
+        This class merges together the Scorer and the Classifier model
         it creates a similarity table
         evaluate the probability of being a match with the model
         and then can either:
@@ -416,7 +416,7 @@ class RecordLinker:
             filterdict (dict): filtering dict with exact matches on an {'all':['country'],'any':[id1,id2]}
             intermediate_thresholds (dict): dictionary of minimum thresholds for intermediate scoring {'name_fuzzyscore':0.6}
             fillna (float): value with which to fill na values
-            evaluator : Class used to calculate a probability vector. Has .predict_proba function and .used_cols attribute ['name_tokenscore','street_fuzzyscore']
+            classifier : Model used to calculate a probability vector. Has .predict_proba function and .used_cols attribute ['name_tokenscore','street_fuzzyscore']
             decision_threshold (float), default 0.8
             verbose (bool): control print output
         """
@@ -431,7 +431,7 @@ class RecordLinker:
 
         self.decision_threshold = decision_threshold
 
-        self.evaluationmodel = evaluator
+        self.classifier = classifier
 
         # set all compared cols to empty
         self.compared_cols = []
@@ -447,7 +447,7 @@ class RecordLinker:
 
         self._calculate_scoredict(filterdict=filterdict,
                                   intermediatethreshold=intermediate_thresholds,
-                                  decision_cols=self.evaluationmodel.used_cols)
+                                  decision_cols=self.classifier.used_cols)
 
         self.scoredict = _transform_scorecols_scoredict(self.score_cols)
 
@@ -467,7 +467,7 @@ class RecordLinker:
                                    fillna=fillna
                                    )
 
-        missingcols = list(filter(lambda x: x not in self.scoringmodel.score_cols, self.evaluationmodel.used_cols))
+        missingcols = list(filter(lambda x: x not in self.scoringmodel.score_cols, self.classifier.used_cols))
         if len(missingcols) > 0:
             raise KeyError('not all training columns are found in the output of the scorer:', missingcols)
 
@@ -629,7 +629,7 @@ class RecordLinker:
         else:
             # launch prediction using the predict_proba of the scikit-learn module
 
-            y_proba = self.evaluationmodel.predict_proba(table_score_complete).copy()
+            y_proba = self.classifier.predict_proba(table_score_complete).copy()
 
             del table_score_complete
 
@@ -777,7 +777,7 @@ class RecordLinker:
             None
         """
         if sqlContext is None:
-            sqlContext=self.evaluationmodel.sqlContext
+            sqlContext=self.classifier.sqlContext
 
         ds = _transform_pandas_spark(sqlContext=sqlContext,df=self.df[self.compared_cols],drop_index=False)
 
@@ -843,7 +843,7 @@ class RecordLinker:
 
     def _predict_proba_spark(self,query):
         ds=self._compare_spark(query=query)
-        y_proba = self.evaluationmodel.predict_proba(ds,index_col='ix_target')
+        y_proba = self.classifier.predict_proba(ds, index_col='ix_target')
         return y_proba
 
 
@@ -996,16 +996,16 @@ def _compare_acronym(a, b, minaccrolength=3):
 
 _acronym_udf = udf(lambda a, b: _compare_acronym(a, b), FloatType())
 
-scorename = {'fuzzy': '_fuzzyscore',
+_scorename = {'fuzzy': '_fuzzyscore',
              'token': '_tokenscore',
              'exact': '_exactscore',
              'acronym': '_acronymscore'}
 
-scorefuncs = {'fuzzy': _fuzzyscore,
+_scorefuncs = {'fuzzy': _fuzzyscore,
               'token': _tokenscore,
               'exact': _exactmatch,
               'acronym': _compare_acronym}
-scoringkeys = list(scorename.keys())
+_scoringkeys = list(_scorename.keys())
 
 
 class Scorer:
@@ -1200,9 +1200,9 @@ class Scorer:
                 table_score[c + '_source'] = query[c]
                 table_score[c + '_target'] = self.df.loc[on_index, c]
 
-        for c in scoringkeys:
-            table = self._compare(query, on_index=on_index, on_cols=scoredict.get(c), func=scorefuncs[c],
-                                  suffix=scorename[c])
+        for c in _scoringkeys:
+            table = self._compare(query, on_index=on_index, on_cols=scoredict.get(c), func=_scorefuncs[c],
+                                  suffix=_scorename[c])
             table_score = pd.concat([table_score, table], axis=1)
 
         return table_score
@@ -1377,11 +1377,11 @@ def _transform_scoredict_scorecols(scoredict):
             inputcols.append(c)
             outputcols.append(c + '_source')
             outputcols.append(c + '_target')
-    for k in scorename.keys():
+    for k in _scorename.keys():
         if scoredict.get(k) is not None:
             for c in scoredict[k]:
                 inputcols.append(c)
-                outputcols.append(c + scorename[k])
+                outputcols.append(c + _scorename[k])
     return inputcols, outputcols
 
 
@@ -1411,17 +1411,17 @@ def _transform_scorecols_scoredict(used_cols, existing_cols=None):
     def _findscoreinfo(colname):
         if colname.endswith('_target'):
             k = 'attributes'
-            u = rmv_end_str(colname, '_target')
+            u = _rmv_end_str(colname, '_target')
             return k, u
         elif colname.endswith('_source'):
             k = 'attributes'
-            u = rmv_end_str(colname, '_source')
+            u = _rmv_end_str(colname, '_source')
             return k, u
         elif colname.endswith('score'):
-            u = rmv_end_str(colname, 'score')
+            u = _rmv_end_str(colname, 'score')
             for k in ['fuzzy', 'token', 'exact', 'acronym']:
                 if u.endswith('_' + k):
-                    u = rmv_end_str(u, '_' + k)
+                    u = _rmv_end_str(u, '_' + k)
                     return k, u
         else:
             return None
@@ -1440,7 +1440,7 @@ def _transform_scorecols_scoredict(used_cols, existing_cols=None):
         return None
 
 
-class FuncEvaluationModel:
+class RuleBasedClassifier:
     """
     This evaluation model applies a hard-coded evaluation function to return a probability vector
     Examples:
@@ -1480,7 +1480,7 @@ class FuncEvaluationModel:
             evalfunc (None): evaluation function, default sum
 
         Returns:
-            FuncEvaluationModel
+            RuleBasedClassifier
 
         Examples:
             scoredict={'attributes':['name_len'],
@@ -1490,7 +1490,7 @@ class FuncEvaluationModel:
                         'acronym':'name'}
         """
         compared_cols, used_cols = _transform_scoredict_scorecols(scoredict)
-        x = FuncEvaluationModel(used_cols=used_cols, eval_func=evalfunc)
+        x = RuleBasedClassifier(used_cols=used_cols, eval_func=evalfunc)
         return x
 
     def predict_proba(self, x_score):
@@ -1517,7 +1517,7 @@ class FuncEvaluationModel:
         return y_proba
 
 
-class TrainerModel:
+class DummyClassifier:
     def __init__(self, scoredict):
         """
         Create a model used only for scoring (for example for creating training data)
@@ -1533,7 +1533,7 @@ class TrainerModel:
         pass
 
 
-class MLEvaluationModel:
+class ScikitLearnClassifier:
     """
     The evaluation model is based on machine learning, it is an implementation of the Random Forest algorithm.
     It requires to be fitted on a training table before making decision.
@@ -1584,11 +1584,11 @@ class MLEvaluationModel:
             print('shape of training table ', X.shape)
             print('number of positives in table', y.sum())
 
-        # fit the evaluationmodel
+        # fit the classifier
         self.model.fit(X, y)
 
         if self.verbose:
-            # show precision and recall score of the evaluationmodel on training data
+            # show precision and recall score of the classifier on training data
             y_pred = self.model.predict(X)
             precision = precision_score(y_true=y, y_pred=y_pred)
             recall = recall_score(y_true=y, y_pred=y_pred)
@@ -1633,7 +1633,7 @@ class MLEvaluationModel:
             assert isinstance(y_proba, pd.Series)
             return y_proba
 
-class SparkMLEvaluationModel():
+class SparkClassifier():
     """
     The evaluation model is based on spark-powered machine learning, it is an implementation of the Random Forest algorithm.
     It requires to be fitted on a training table before making decision.
@@ -1694,11 +1694,11 @@ class SparkMLEvaluationModel():
         rf_classifier = SparkRF(labelCol=labelIndexer.getOutputCol(), featuresCol=assembler.getOutputCol())
         pipeline=Pipeline(stages=[assembler,labelIndexer,rf_classifier])
 
-        # fit the evaluationmodel
+        # fit the classifier
         self.pipeline_model = pipeline.fit(Xs)
 
         if self.verbose:
-            # show precision and recall score of the evaluationmodel on training data
+            # show precision and recall score of the classifier on training data
             y_pred = self.predict_proba(X)
             y_pred= (y_pred > 0.5)
             assert isinstance(y_pred,pd.Series)
@@ -1765,7 +1765,7 @@ class SparkMLEvaluationModel():
 
 
 
-def rmv_end_str(w, s):
+def _rmv_end_str(w, s):
     """
     remove str at the end of tken
     :param w: str, token to be cleaned
