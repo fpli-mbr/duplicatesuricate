@@ -1,0 +1,10 @@
+setup.py
+duplicatesuricate/__init__.py
+duplicatesuricate/deduplication.py
+duplicatesuricate/preprocessing.py
+duplicatesuricate.egg-info/PKG-INFO
+duplicatesuricate.egg-info/SOURCES.txt
+duplicatesuricate.egg-info/dependency_links.txt
+duplicatesuricate.egg-info/not-zip-safe
+duplicatesuricate.egg-info/requires.txt
+duplicatesuricate.egg-info/top_level.txt

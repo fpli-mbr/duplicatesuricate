@@ -1,3 +1,5 @@
+__version__ = '0.4.1'
+
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier

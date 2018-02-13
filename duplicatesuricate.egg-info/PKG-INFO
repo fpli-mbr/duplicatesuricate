@@ -1,0 +1,16 @@
+Metadata-Version: 1.1
+Name: duplicatesuricate
+Version: 0.4.1
+Summary: Entity resolution algorithm implemented with scikit-learn
+Home-page: https://github.com/ogierpaul/duplicatesuricate
+Author: Amber Ocelot
+Author-email: AmberOcelot@gmail.com
+License: na
+Download-URL: https://github.com/ogierpaul/duplicatesuricate.git
+Description: UNKNOWN
+Keywords: pandas,data cleaning,entity matching,entity resolution,record linkage
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Utilities
