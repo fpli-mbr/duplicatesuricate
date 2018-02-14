@@ -229,6 +229,9 @@ class Suricate:
         if exact is None:
             exact = []
 
+        inputs = np.array(inputs)
+        targets = np.array(targets)
+
         allcols = list(set(display + fuzzy + exact))
 
         # take all values from source records
@@ -1520,7 +1523,7 @@ class RuleBasedClassifier:
 
 
 class DummyClassifier:
-    def __init__(self, scoredict):
+    def __init__(self, scoredict=dict()):
         """
         Create a model used only for scoring (for example for creating training data)
         used_cols (list): list of columns necessary for decision
@@ -1606,7 +1609,7 @@ class ScikitLearnClassifier:
 
         if self.verbose:
             print('shape of training table ', X.shape)
-            print('proportion of positives in table: {0:0.0f}%'.format(y.sum()/X.shape[0]))
+            print('proportion of positives in table: {0:.1%}'.format(y.sum()/X.shape[0]))
 
         # fit the classifier
         self.model.fit(X, y)
@@ -1616,7 +1619,7 @@ class ScikitLearnClassifier:
             y_pred = self.model.predict(X)
             precision = precision_score(y_true=y, y_pred=y_pred)
             recall = recall_score(y_true=y, y_pred=y_pred)
-            print('precision, recall score on training data: {0:0.0f}%,{0:0.0f}%'.format(precision,recall))
+            print('precision, recall score on training data: {0:.1%},{0:.1%}'.format(precision,recall))
 
         if self.verbose:
             end = pd.datetime.now()
