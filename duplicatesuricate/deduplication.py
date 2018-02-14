@@ -1606,7 +1606,7 @@ class ScikitLearnClassifier:
 
         if self.verbose:
             print('shape of training table ', X.shape)
-            print('number of positives in table', y.sum())
+            print('proportion of positives in table: {0:0.0f}%'.format(y.sum()/X.shape[0]))
 
         # fit the classifier
         self.model.fit(X, y)
@@ -1616,8 +1616,7 @@ class ScikitLearnClassifier:
             y_pred = self.model.predict(X)
             precision = precision_score(y_true=y, y_pred=y_pred)
             recall = recall_score(y_true=y, y_pred=y_pred)
-            print('precision score on training data:', precision)
-            print('recall score on training data:', recall)
+            print('precision, recall score on training data: {0:0.0f}%,{0:0.0f}%'.format(precision,recall))
 
         if self.verbose:
             end = pd.datetime.now()
