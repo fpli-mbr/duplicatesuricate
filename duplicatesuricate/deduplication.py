@@ -1,4 +1,4 @@
-__version__ = '0.4.2'
+__version__ = '0.4.3'
 
 import numpy as np
 import pandas as pd
@@ -1554,7 +1554,7 @@ class DummyClassifier:
             pd.Series
         """
         y_proba = np.random.random(size=X.shape[0])
-        y_proba=pd.Series(y_proba,index=X.shape[0])
+        y_proba=pd.Series(y_proba,index=X.index)
         return y_proba
 
 class ScikitLearnClassifier:
