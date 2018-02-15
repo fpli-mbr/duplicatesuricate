@@ -123,7 +123,7 @@ cleandict = {
     'postalcode': nm.format_int_to_str,
     'postalcode_1stdigit': (lambda r: None if pd.isnull(r) else str(r)[:1], 'postalcode'),
     'postalcode_2digits': (lambda r: None if pd.isnull(r) else str(r)[:2], 'postalcode'),
-    'name_len': (lambda r: len(r), 'name'),
+    'name_len': (lambda r: None if pd.isnull(r) else len(r), 'name'),
     'hasairbusname': (lambda r: 0 if pd.isnull(r) else int(any(w in r for w in airbus_names)), 'name'),
     'isbigcity': (lambda r: 0 if pd.isnull(r) else int(any(w in r for w in bigcities)), 'city')
 
