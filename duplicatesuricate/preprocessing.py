@@ -41,6 +41,7 @@ companystopwords_list = ['aerospace',
                          'sl',
                          'software',
                          'solutions',
+                         'spa',
                          'srl',
                          'systems',
                          'technologies',
@@ -48,7 +49,7 @@ companystopwords_list = ['aerospace',
                          'the',
                          'uk',
                          'und']
-streetstopwords_list = ['avenue', 'calle', 'road', 'rue', 'str', 'strasse', 'strae']
+streetstopwords_list = ['avenue', 'calle','piazza' ,'road', 'rue', 'str', 'strasse', 'strae','via']
 endingwords_list = ['strasse', 'str', 'strae']
 bigcities = ['munich',
              'paris',
