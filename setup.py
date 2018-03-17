@@ -10,7 +10,7 @@ setup(name='duplicatesuricate',
       zip_safe=False,
       url='https://github.com/ogierpaul/duplicatesuricate',
       download_url='https://github.com/ogierpaul/duplicatesuricate.git',
-      keywords=['pandas', 'data cleaning',
+      keywords=['pandas','park', 'data cleaning',
                 'entity matching', 'entity resolution', 'record linkage'],
       classifiers=[
           'Programming Language :: Python :: 3',
