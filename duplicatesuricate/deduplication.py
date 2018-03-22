@@ -6,7 +6,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
 from fuzzywuzzy.fuzz import ratio, token_set_ratio
 
-from pyspark.sql.functions import udf,lit
+from pyspark.sql.functions import udf, lit
 from pyspark.sql.types import IntegerType, FloatType, StructType, StructField, StringType, BooleanType
 from pyspark.ml.feature import VectorAssembler, StringIndexer
 from pyspark.ml.classification import RandomForestClassifier as SparkRF
@@ -19,7 +19,6 @@ class Suricate:
                  classifier,
                  filterdict=None,
                  intermediate_thresholds=None,
-                 cleanfunc=None,
                  idcol='gid', queryidcol='queryid', decision_threshold=0.5, verbose=True, spark=False):
         """
         Main class used for deduplication
@@ -29,16 +28,13 @@ class Suricate:
             classifier: evaluation classifier, has a .predict_proba and a .used_cols function
             filterdict (dict): define the all/any logic used detailed in filter_all_any {'all':['country_code'],'any':['duns']}
             intermediate_thresholds(dict): add an intermediary filter {'name_fuzzyscore':0.8}
-            cleanfunc: cleaning function used for the databases
             idcol (str): name of the column where to store the deduplication results
             queryidcol (str): name of the column used to store the original match
             verbose (bool): Turns on or off prints
         """
-        if cleanfunc is None:
-            cleanfunc = lambda x: x
 
-        self.input_records = cleanfunc(input_records)
-        self.target_records = cleanfunc(target_records)
+        self.input_records = input_records
+        self.target_records = target_records
         self.input_records.index.name='ix_source'
         self.target_records.index.mame='ix_target'
 
@@ -1523,7 +1519,7 @@ class RuleBasedClassifier:
 
 
 class DummyClassifier:
-    def __init__(self, scoredict=dict()):
+    def __init__(self, scoredict=None):
         """
         Create a model used only for scoring (for example for creating training data)
         used_cols (list): list of columns necessary for decision
@@ -1531,7 +1527,10 @@ class DummyClassifier:
         Args:
             scoredict (dict): {'fuzzy':['name','street'],'token':['name_wostopwords'],'acronym':None}
         """
-        self.scoredict = scoredict
+        if scoredict is None:
+            self.scoredict = dict()
+        else:
+            self.scoredict = scoredict
         compared_cols, used_cols = _transform_scoredict_scorecols(scoredict)
         self.used_cols = used_cols
         self.compared_cols = compared_cols
@@ -1725,7 +1724,7 @@ class SparkClassifier():
 
         if self.verbose:
             # show precision and recall score of the classifier on training data
-            y_pred = self.predict_proba(Xs,index_col=None)
+            y_pred = self.predict_proba(Xs, index_col=None)
             y_pred= (y_pred > 0.5)
             assert isinstance(y_pred,pd.Series)
             precision = precision_score(y_true=y, y_pred=y_pred)
