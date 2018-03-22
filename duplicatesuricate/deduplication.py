@@ -13,6 +13,24 @@ from pyspark.ml.feature import VectorAssembler, StringIndexer
 from pyspark.ml.classification import RandomForestClassifier as SparkRF
 from pyspark.ml import Pipeline
 
+connector = False
+
+class TargetConnector:
+    def __init__(self, search_func):
+        self.compared_cols = list()
+        self.score_cols = list()
+        self.search_func = search_func
+    def search(self, query):
+        """
+
+        Args:
+            query (pd.Series): the query
+
+        Returns:
+            pd.DataFrame: the potential matches record
+        """
+        df = self.search_func(query)
+        return df
 
 class Suricate:
     def __init__(self, input_records,
@@ -1076,6 +1094,11 @@ class Scorer:
 
         self.input_records = pd.DataFrame()
 
+        if connector is True:
+            self.target_connector = TargetConnector()
+        else:
+            self.target_connector = None
+
         pass
 
     def filter_all_any(self, query, on_index=None, filterdict=None, return_filtered=True):
@@ -1236,58 +1259,62 @@ class Scorer:
         else:
             workingindex = on_index
 
-        table_score_complete = self.filter_all_any(query=query,
+        if connector is True:
+            table_score_complete = self.target_connector.search(query, on_index=workingindex)
+        else:
+            table_score_complete = self.filter_all_any(query=query,
                                                    on_index=workingindex,
                                                    filterdict=self.filterdict,
                                                    return_filtered=return_filtered
                                                    )
-        workingindex = table_score_complete.index
-
-        if table_score_complete.shape[0] == 0:
-            return None
-
-        else:
-            # do further scoring on the possible choices and the sure choices
-            table_intermediate = self.build_similarity_table(query=query,
-                                                             on_index=workingindex,
-                                                             scoredict=self.intermediate_score)
-
-            table_score_complete = table_score_complete.join(table_intermediate, how='left')
-            del table_intermediate
-
-            y_intermediate = table_score_complete.apply(lambda r: self.intermediate_func(r), axis=1)
-            y_intermediate = y_intermediate.astype(bool)
-
-            assert isinstance(y_intermediate, pd.Series)
-            assert (y_intermediate.dtype == bool)
-
-            if return_filtered is True:
-                table_score_complete = table_score_complete.loc[y_intermediate]
 
             workingindex = table_score_complete.index
 
             if table_score_complete.shape[0] == 0:
                 return None
+
             else:
-                # we perform further analysis on the filtered index:
-                # we complete the fuzzy score with additional columns
+                # do further scoring on the possible choices and the sure choices
+                table_intermediate = self.build_similarity_table(query=query,
+                                                                 on_index=workingindex,
+                                                                 scoredict=self.intermediate_score)
 
-                table_additional = self.build_similarity_table(query=query, on_index=workingindex,
-                                                               scoredict=self.further_score)
+                table_score_complete = table_score_complete.join(table_intermediate, how='left')
+                del table_intermediate
 
-                # check to make sure no duplicates columns
-                duplicatecols = list(filter(lambda x: x in table_score_complete.columns, table_additional.columns))
-                if len(duplicatecols) > 0:
-                    table_additional.drop(duplicatecols, axis=1, inplace=True)
+                y_intermediate = table_score_complete.apply(lambda r: self.intermediate_func(r), axis=1)
+                y_intermediate = y_intermediate.astype(bool)
 
-                # we join the two tables to have a complete view of the score
-                table_score_complete = table_score_complete.join(table_additional, how='left')
+                assert isinstance(y_intermediate, pd.Series)
+                assert (y_intermediate.dtype == bool)
 
-                del table_additional
+                if return_filtered is True:
+                    table_score_complete = table_score_complete.loc[y_intermediate]
 
-                table_score_complete = table_score_complete.fillna(self.navalue)
+        workingindex = table_score_complete.index
 
-                return table_score_complete
+        if table_score_complete.shape[0] == 0:
+            return None
+        else:
+            # we perform further analysis on the filtered index:
+            # we complete the fuzzy score with additional columns
+
+            table_additional = self.build_similarity_table(query=query, on_index=workingindex,
+                                                           scoredict=self.further_score)
+
+            # check to make sure no duplicates columns
+            duplicatecols = list(filter(lambda x: x in table_score_complete.columns, table_additional.columns))
+            if len(duplicatecols) > 0:
+                table_additional.drop(duplicatecols, axis=1, inplace=True)
+
+            # we join the two tables to have a complete view of the score
+            table_score_complete = table_score_complete.join(table_additional, how='left')
+
+            del table_additional
+
+            table_score_complete = table_score_complete.fillna(self.navalue)
+
+            return table_score_complete
 
     def _compare(self, query, on_index, on_cols, func, suffix):
         """
