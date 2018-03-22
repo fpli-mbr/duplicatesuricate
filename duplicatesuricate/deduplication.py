@@ -6,6 +6,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
 from fuzzywuzzy.fuzz import ratio, token_set_ratio
 
+# noinspection PyUnresolvedReferences
 from pyspark.sql.functions import udf, lit
 from pyspark.sql.types import IntegerType, FloatType, StructType, StructField, StringType, BooleanType
 from pyspark.ml.feature import VectorAssembler, StringIndexer
@@ -35,8 +36,8 @@ class Suricate:
 
         self.input_records = input_records
         self.target_records = target_records
-        self.input_records.index.name='ix_source'
-        self.target_records.index.mame='ix_target'
+        self.input_records.index.name = 'ix_source'
+        self.target_records.index.mame = 'ix_target'
 
         self.linker = RecordLinker(df=self.target_records,
                                    filterdict=filterdict,
@@ -238,11 +239,11 @@ class Suricate:
         # take all values from target records
         x = self.target_records.loc[targets, allcols].copy()
         x.columns = [c + '_target' for c in allcols]
-        x.index.name='ix_target'
+        x.index.name = 'ix_target'
         res['ix_target'] = targets
         res.set_index('ix_target', inplace=True, drop=True)
-        res.index.name='ix_target'
-        res = pd.concat([res,x],axis=1)
+        res.index.name = 'ix_target'
+        res = pd.concat([res, x], axis=1)
         del x
         res.reset_index(inplace=True, drop=False)
 
@@ -256,23 +257,23 @@ class Suricate:
         res.set_index(['ix_source', 'ix_target'], inplace=True, drop=True)
 
         # Launch scoring
-        if len(fuzzy)>0:
+        if len(fuzzy) > 0:
             df_fuzzy = pd.DataFrame(index=res.index)
             for c in fuzzy:
                 df_fuzzy[c + '_fuzzyscore'] = res.apply(
                     lambda r: _fuzzyscore(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
-            if len(fuzzy)>1:
+            if len(fuzzy) > 1:
                 df_fuzzy['avg_fuzzyscore'] = df_fuzzy.fillna(0).mean(axis=1)
             res = res.join(df_fuzzy)
 
-        if len(exact)>0:
+        if len(exact) > 0:
             df_exact = pd.DataFrame(index=res.index)
             for c in exact:
                 df_exact[c + '_exactscore'] = res.apply(
                     lambda r: _exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
-            if len(exact)>1:
+            if len(exact) > 1:
                 df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
             res = res.join(df_exact)
 
@@ -285,7 +286,7 @@ class Suricate:
                 ordered.append(c + '_fuzzyscore')
             elif c in exact:
                 ordered.append(c + '_exactscore')
-        missing_cols = sorted(list(filter(lambda x: x not in ordered, res.columns)))
+        missing_cols = sorted(list(filter(lambda m: m not in ordered, res.columns)))
         ordered += missing_cols
 
         res = res.reindex(ordered, axis=1)
@@ -425,7 +426,7 @@ class RecordLinker:
         self.verbose = verbose
 
         self.df = df
-        self.df.index.name='ix_target'
+        self.df.index.name = 'ix_target'
 
         # initiate query to empty
         self.query = pd.Series()
@@ -768,7 +769,7 @@ class RecordLinker:
 
         return scoring_vector
 
-    def _prepare_spark(self,sqlContext=None):
+    def _prepare_spark(self, sqlContext=None):
         """
         Initialize a .sparkdf attribute
         Args:
@@ -778,12 +779,12 @@ class RecordLinker:
             None
         """
         if sqlContext is None:
-            sqlContext=self.classifier.sqlContext
+            sqlContext = self.classifier.sqlContext
 
-        ds = _transform_pandas_spark(sqlContext=sqlContext,df=self.df[self.compared_cols],drop_index=False)
+        ds = _transform_pandas_spark(sqlContext=sqlContext, df=self.df[self.compared_cols], drop_index=False)
 
         for c in self.compared_cols:
-            ds = ds.withColumnRenamed(existing=c,new=c+"_target")
+            ds = ds.withColumnRenamed(existing=c, new=c + "_target")
 
         self.sparkdf = ds
         return None
@@ -809,26 +810,26 @@ class RecordLinker:
         if fuzzycols is not None:
             for c in fuzzycols:
                 ds = ds.withColumn(c + '_fuzzyscore',
-                                                       _fuzzy_udf(ds[c + '_source'],
-                                                                  ds[c + '_target']))
+                                   _fuzzy_udf(ds[c + '_source'],
+                                              ds[c + '_target']))
         tokencols = self.scoredict.get('token')
         if tokencols is not None:
             for c in tokencols:
                 ds = ds.withColumn(c + '_tokenscore',
-                                                       _token_udf(ds[c + '_source'],
-                                                                  ds[c + '_target']))
+                                   _token_udf(ds[c + '_source'],
+                                              ds[c + '_target']))
         exactcols = self.scoredict.get('exact')
         if exactcols is not None:
             for c in exactcols:
                 ds = ds.withColumn(c + '_exactscore',
-                                                       _exact_udf(ds[c + '_source'],
-                                                                  ds[c + '_target']))
+                                   _exact_udf(ds[c + '_source'],
+                                              ds[c + '_target']))
         acronymcols = self.scoredict.get('acronym')
         if acronymcols is not None:
             for c in acronymcols:
                 ds = ds.withColumn(c + '_acronymscore',
-                                                       _acronym_udf(ds[c + '_source'],
-                                                                    ds[c + '_target']))
+                                   _acronym_udf(ds[c + '_source'],
+                                                ds[c + '_target']))
 
         ## TODO: add attributes
         # think how to initialize form pandas dataframe and then transform it as float
@@ -837,13 +838,13 @@ class RecordLinker:
         #     for c in attributescols:
         #         self.sparkdf = self.sparkdf.withColumn(c+'_query',lit(self.query[c].c))
 
-        usecols=['ix_source','ix_target']+self.score_cols
+        usecols = ['ix_source', 'ix_target'] + self.score_cols
 
-        ds= ds.select(usecols)
+        ds = ds.select(usecols)
         return ds
 
-    def _predict_proba_spark(self,query):
-        ds=self._compare_spark(query=query)
+    def _predict_proba_spark(self, query):
+        ds = self._compare_spark(query=query)
         y_proba = self.classifier.predict_proba(ds, index_col='ix_target')
         return y_proba
 
@@ -998,14 +999,14 @@ def _compare_acronym(a, b, minaccrolength=3):
 _acronym_udf = udf(lambda a, b: _compare_acronym(a, b), FloatType())
 
 _scorename = {'fuzzy': '_fuzzyscore',
-             'token': '_tokenscore',
-             'exact': '_exactscore',
-             'acronym': '_acronymscore'}
+              'token': '_tokenscore',
+              'exact': '_exactscore',
+              'acronym': '_acronymscore'}
 
 _scorefuncs = {'fuzzy': _fuzzyscore,
-              'token': _tokenscore,
-              'exact': _exactmatch,
-              'acronym': _compare_acronym}
+               'token': _tokenscore,
+               'exact': _exactmatch,
+               'acronym': _compare_acronym}
 _scoringkeys = list(_scorename.keys())
 
 
@@ -1535,7 +1536,8 @@ class DummyClassifier:
         self.used_cols = used_cols
         self.compared_cols = compared_cols
         pass
-    def fit(self,X,y):
+
+    def fit(self, X, y):
         """
         Do nothing
         Args:
@@ -1546,7 +1548,8 @@ class DummyClassifier:
 
         """
         pass
-    def predict_proba(self,X):
+
+    def predict_proba(self, X):
         """
         A dart-throwing chump generates a random probability vector for the sake of coherency with other classifier
         Args:
@@ -1556,8 +1559,9 @@ class DummyClassifier:
             pd.Series
         """
         y_proba = np.random.random(size=X.shape[0])
-        y_proba=pd.Series(y_proba,index=X.index)
+        y_proba = pd.Series(y_proba, index=X.index)
         return y_proba
+
 
 class ScikitLearnClassifier:
     """
@@ -1608,7 +1612,7 @@ class ScikitLearnClassifier:
 
         if self.verbose:
             print('shape of training table ', X.shape)
-            print('proportion of positives in table: {0:.1%}'.format(y.sum()/X.shape[0]))
+            print('proportion of positives in table: {0:.1%}'.format(y.sum() / X.shape[0]))
 
         # fit the classifier
         self.model.fit(X, y)
@@ -1618,7 +1622,7 @@ class ScikitLearnClassifier:
             y_pred = self.model.predict(X)
             precision = precision_score(y_true=y, y_pred=y_pred)
             recall = recall_score(y_true=y, y_pred=y_pred)
-            print('precision, recall score on training data: {0:.1%},{0:.1%}'.format(precision,recall))
+            print('precision, recall score on training data: {0:.1%},{0:.1%}'.format(precision, recall))
 
         if self.verbose:
             end = pd.datetime.now()
@@ -1658,7 +1662,8 @@ class ScikitLearnClassifier:
             assert isinstance(y_proba, pd.Series)
             return y_proba
 
-class SparkClassifier():
+
+class SparkClassifier:
     """
     The evaluation model is based on spark-powered machine learning, it is an implementation of the Random Forest algorithm.
     It requires to be fitted on a training table before making decision.
@@ -1669,7 +1674,7 @@ class SparkClassifier():
         y_proba = dm.predict_proba(x_score)
     """
 
-    def __init__(self, sqlContext, verbose=True ):
+    def __init__(self, sqlContext, verbose=True):
         """
         Create the model
         Args:
@@ -1679,6 +1684,7 @@ class SparkClassifier():
         self.verbose = verbose
         self.sqlContext = sqlContext
         self.used_cols = list()
+        self.pipeline_model = None
 
         pass
 
@@ -1700,33 +1706,33 @@ class SparkClassifier():
             print('shape of training table ', X.shape)
             print('number of positives in table', y.sum())
 
-
         self.used_cols = X.columns.tolist()
 
-
         # Format pandas DataFrame for use in spark, including types
-        X=X.astype(float)
-        assert isinstance(X,pd.DataFrame)
-        X['y_train']=y
-        X['y_train']=X['y_train'].astype(int)
+        X = X.astype(float)
+        assert isinstance(X, pd.DataFrame)
+        X['y_train'] = y
+        X['y_train'] = X['y_train'].astype(int)
 
-        Xs = _transform_pandas_spark(self.sqlContext,df=X,drop_index=True)
+        Xs = _transform_pandas_spark(self.sqlContext, df=X, drop_index=True)
 
         # Create the pipeline
 
-        assembler = VectorAssembler(inputCols=list(self.used_cols),outputCol="features")
+        assembler = VectorAssembler(inputCols=list(self.used_cols), outputCol="features")
         labelIndexer = StringIndexer(inputCol="y_train", outputCol="label")
         rf_classifier = SparkRF(labelCol=labelIndexer.getOutputCol(), featuresCol=assembler.getOutputCol())
-        pipeline=Pipeline(stages=[assembler,labelIndexer,rf_classifier])
+        pipeline = Pipeline(stages=[assembler, labelIndexer, rf_classifier])
 
         # fit the classifier
         self.pipeline_model = pipeline.fit(Xs)
 
         if self.verbose:
             # show precision and recall score of the classifier on training data
-            y_pred = self.predict_proba(Xs, index_col=None)
-            y_pred= (y_pred > 0.5)
-            assert isinstance(y_pred,pd.Series)
+            y_pred = self.predict_proba(Xs)
+            assert isinstance(y_pred, pd.Series)
+            # noinspection PyTypeChecker
+            y_pred = (y_pred > 0.5)
+            assert isinstance(y_pred, pd.Series)
             precision = precision_score(y_true=y, y_pred=y_pred)
             recall = recall_score(y_true=y, y_pred=y_pred)
             print('precision score on training data:', precision)
@@ -1738,7 +1744,7 @@ class SparkClassifier():
             print('time elapsed', duration, 'seconds')
         pass
 
-    def _predict(self,X):
+    def _predict(self, X):
         """
         Args:
             X (pyspark.sql.dataframe.DataFrame):
@@ -1747,13 +1753,12 @@ class SparkClassifier():
             pyspark.sql.dataframe.DataFrame
         """
 
-        x_pred=self.pipeline_model.transform(X)
+        x_pred = self.pipeline_model.transform(X)
         proba_udf = udf(lambda r: float(r[1]), FloatType())
         x_pred = x_pred.withColumn('y_proba', proba_udf(x_pred["probability"]))
         return x_pred
 
-
-    def predict_proba(self, X,index_col=None):
+    def predict_proba(self, X, index_col=None):
         """
         This is the evaluation function.
         It takes as input a DataFrame with each row being the similarity score between the query and the target records.
@@ -1771,23 +1776,22 @@ class SparkClassifier():
         """
         if type(X) == pd.DataFrame:
             if index_col is None:
-                drop_index=False
+                drop_index = False
                 if X.index.name is None:
-                    index_col='index'
+                    index_col = 'index'
                 else:
-                    index_col=X.index.name
+                    index_col = X.index.name
             else:
-                drop_index=True
-            X=_transform_pandas_spark(sqlContext=self.sqlContext,df=X,drop_index=drop_index)
+                drop_index = True
+            X = _transform_pandas_spark(sqlContext=self.sqlContext, df=X, drop_index=drop_index)
 
         x_pred = self._predict(X)
         if index_col in x_pred.schema.names:
-            dp = x_pred.select([index_col,'y_proba']).toPandas()
+            dp = x_pred.select([index_col, 'y_proba']).toPandas()
             dp.set_index(index_col, inplace=True)
         else:
             dp = x_pred.select(['y_proba']).toPandas()
         return dp['y_proba']
-
 
 
 def _rmv_end_str(w, s):
@@ -1802,18 +1806,19 @@ def _rmv_end_str(w, s):
     return w
 
 
-_sparktypedict = {}
-_sparktypedict[np.dtype('O')]= StringType()
-_sparktypedict[np.dtype('int64')]= IntegerType()
-_sparktypedict[np.dtype('float64')]= FloatType()
-_sparktypedict[np.dtype('bool')]= BooleanType()
+_sparktypedict = dict()
+_sparktypedict[np.dtype('O')] = StringType()
+_sparktypedict[np.dtype('int64')] = IntegerType()
+_sparktypedict[np.dtype('float64')] = FloatType()
+_sparktypedict[np.dtype('bool')] = BooleanType()
 
-_sparktypedict[str]= StringType()
-_sparktypedict[int]= IntegerType()
-_sparktypedict[float]= FloatType()
-_sparktypedict[bool]= BooleanType()
+_sparktypedict[str] = StringType()
+_sparktypedict[int] = IntegerType()
+_sparktypedict[float] = FloatType()
+_sparktypedict[bool] = BooleanType()
 
-def _transform_pandas_spark(sqlContext,df,drop_index=False):
+
+def _transform_pandas_spark(sqlContext, df, drop_index=False):
     """
     Takes a pandas DataFrame as an entry. Convert it to a Spark DF, using the pandas Schema and index
     Args:
@@ -1844,15 +1849,12 @@ def _transform_pandas_spark(sqlContext,df,drop_index=False):
 
     if drop_index is False:
         # add index to the dataframe
-        x=df.reset_index(drop=False)
+        x = df.reset_index(drop=False)
     else:
         x = df
 
     # create dataframe
     ds = sqlContext.createDataFrame(x, schema=schema)
     return ds
-
-
-
 
 # Thank you
