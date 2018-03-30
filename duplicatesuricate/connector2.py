@@ -1,15 +1,3 @@
-import numpy as np
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import precision_score, recall_score
-from fuzzywuzzy.fuzz import ratio, token_set_ratio
-
-# noinspection PyUnresolvedReferences
-from pyspark.sql.functions import udf, lit
-from pyspark.sql.types import IntegerType, FloatType, StructType, StructField, StringType, BooleanType
-from pyspark.ml.feature import VectorAssembler, StringIndexer
-from pyspark.ml.classification import RandomForestClassifier as SparkRF
-from pyspark.ml import Pipeline
 
 
 class _RecordLinker:
@@ -24,13 +12,18 @@ class _RecordLinker:
         self.connector = connector
         self.comparator = comparator
         self.evaluator = evaluator
+        self._coherency()
         pass
+
     def _coherency(self):
         '''
         Checks if the different components can work with one another
         Returns:
             bool:
         '''
+        assert self.connector.attributes == self.comparator.compared
+        assert self.evaluator.used.issubset(self.connector.relevance.union(self.comparator.scored))
+        return True
 
 
 class _Connector:
@@ -64,7 +57,7 @@ class _Connector:
         return results
 
     def _config_init(self, **kwargs):
-        attributes = set(['info','info2'])
+        attributes = set(['info', 'info2'])
         relevance = set('relevance')
         return attributes, relevance
 
@@ -90,6 +83,7 @@ class _Comparator:
         assert set(results.columns) == self.scored
         return results
 
+
 class _Evaluator:
     def __init__(self, **kwargs):
         """
@@ -103,8 +97,8 @@ class _Evaluator:
         assert isinstance(self.used, set)
         pass
 
-    def _config_init(self, **kwargs):
-        used = set(['info_score','relevance'])
+    def _config_init(self, *args,**kwargs):
+        used = set(['info_score', 'relevance'])
         return used
 
     def fit(self, X, y):
@@ -115,7 +109,7 @@ class _Evaluator:
             y:
 
         Returns:
-
+            None
         """
         pass
 
