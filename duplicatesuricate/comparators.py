@@ -1,4 +1,5 @@
 import pandas as pd
+from array import _Array, _Col
 
 class _Comparator:
     def __init__(self, **kwargs):
@@ -13,6 +14,15 @@ class _Comparator:
         return compared, scored
 
     def compare(self, query, targets):
+        '''
+
+        Args:
+            query (_Col):
+            targets (_Array):
+
+        Returns:
+            _Array
+        '''
         results = pd.DataFrame(columns=self.scored)
 
         assert set(results.columns) == self.scored
