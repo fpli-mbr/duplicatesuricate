@@ -1,5 +1,5 @@
 import pandas as pd
-
+from array import _Array, _Col
 class _Connector:
     def __init__(self, source=None, **kwargs):
         '''
@@ -23,9 +23,9 @@ class _Connector:
             query:
 
         Returns:
-            array
+            _Array
         '''
-        results = pd.DataFrame(columns=self.output)
+        results = _Array(pd.DataFrame(columns=self.output))
 
         assert set(results.columns) == self.output
         return results
