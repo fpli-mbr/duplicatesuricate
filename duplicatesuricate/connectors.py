@@ -65,9 +65,9 @@ class PandasDF(_Connector):
 
 
     def _search(self, query, on_index=None, return_filtered=True):
-        table1 = self.all_any(query=query, on_index=on_index, return_filtered=return_filtered)
-        table2 = self.compare(query=query, on_index=table1.index, return_filtered=return_filtered)
-        table = pd.concat([table1,table2], axis=1)
+        results1 = self.all_any(query=query, on_index=on_index, return_filtered=return_filtered)
+        results2 = self.compare(query=query, on_index=results1.index, return_filtered=return_filtered)
+        table = pd.concat([results1.loc[results1.index],results2], axis=1)
         return table
 
     def all_any(self, query, on_index=None, return_filtered = True):
@@ -113,7 +113,7 @@ class PandasDF(_Connector):
             match_any_df = pd.DataFrame(index=on_index)
             for c in match_any_cols:
                 match_any_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: functions._exactmatch(r, query[c]))
+                    lambda r: functions.exactmatch(r, query[c]))
             y = (match_any_df == 1)
             assert isinstance(y, pd.DataFrame)
 
@@ -127,7 +127,7 @@ class PandasDF(_Connector):
             match_all_df = pd.DataFrame(index=on_index)
             for c in match_all_cols:
                 match_all_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: functions._exactmatch(r, query[c]))
+                    lambda r: functions.exactmatch(r, query[c]))
             y = (match_all_df == 1)
             assert isinstance(y, pd.DataFrame)
             allcriteriasmatch = y.all(axis=1)

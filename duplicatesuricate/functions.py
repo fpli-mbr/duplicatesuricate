@@ -45,7 +45,7 @@ def _convert_fuzzratio(x):
     return score
 
 
-def _fuzzyscore(a, b):
+def fuzzyscore(a, b):
     """
     fuzzyscore using fuzzywuzzy.ratio
     Args:
@@ -62,10 +62,10 @@ def _fuzzyscore(a, b):
         return score
 
 
-_fuzzy_udf = udf(lambda a, b: _fuzzyscore(a, b), FloatType())
+_fuzzy_udf = udf(lambda a, b: fuzzyscore(a, b), FloatType())
 
 
-def _tokenscore(a, b):
+def tokenscore(a, b):
     """
     fuzzyscore using fuzzywuzzy.token_set_ratio
     Args:
@@ -82,10 +82,10 @@ def _tokenscore(a, b):
         return score
 
 
-_token_udf = udf(lambda a, b: _tokenscore(a, b), FloatType())
+_token_udf = udf(lambda a, b: tokenscore(a, b), FloatType())
 
 
-def _exactmatch(a, b):
+def exactmatch(a, b):
     if pd.isnull(a) or pd.isnull(b):
         return 0.0
     else:
@@ -95,10 +95,10 @@ def _exactmatch(a, b):
             return -1.0
 
 
-_exact_udf = udf(lambda a, b: _exactmatch(a, b), FloatType())
+_exact_udf = udf(lambda a, b: exactmatch(a, b), FloatType())
 
 
-def _acronym(s):
+def acronym(s):
     """
     make an acronym of the string: take the first line of each token
     Args:
@@ -115,7 +115,7 @@ def _acronym(s):
         return a
 
 
-def _compare_acronym(a, b, minaccrolength=3):
+def compare_acronym(a, b, minaccrolength=3):
     """
     compare the acronym of two strings
     Args:
@@ -129,11 +129,11 @@ def _compare_acronym(a, b, minaccrolength=3):
     if pd.isnull(a) or pd.isnull(b):
         return 0.0
     else:
-        a_acronyme = _acronym(a)
-        b_acronyme = _acronym(b)
+        a_acronyme = acronym(a)
+        b_acronyme = acronym(b)
         if min(len(a_acronyme), len(b_acronyme)) >= minaccrolength:
-            a_score_acronyme = _tokenscore(a_acronyme, b)
-            b_score_acronyme = _tokenscore(a, b_acronyme)
+            a_score_acronyme = tokenscore(a_acronyme, b)
+            b_score_acronyme = tokenscore(a, b_acronyme)
             if all(pd.isnull([a_score_acronyme, b_score_acronyme])):
                 return 0.0
             else:
@@ -143,15 +143,15 @@ def _compare_acronym(a, b, minaccrolength=3):
             return 0.0
 
 
-_acronym_udf = udf(lambda a, b: _compare_acronym(a, b), FloatType())
+_acronym_udf = udf(lambda a, b: compare_acronym(a, b), FloatType())
 _scorename = {'fuzzy': '_fuzzyscore',
               'token': '_tokenscore',
               'exact': '_exactscore',
               'acronym': '_acronymscore'}
-_scorefuncs = {'fuzzy': _fuzzyscore,
-               'token': _tokenscore,
-               'exact': _exactmatch,
-               'acronym': _compare_acronym}
+_scorefuncs = {'fuzzy': fuzzyscore,
+               'token': tokenscore,
+               'exact': exactmatch,
+               'acronym': compare_acronym}
 _scoringkeys = list(_scorename.keys())
 
 
