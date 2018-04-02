@@ -1,5 +1,5 @@
 import pandas as pd
-from array import _Array
+from xarray import _Array
 import functions
 
 class _Connector:
@@ -46,21 +46,24 @@ class _Connector:
         return results
 
 class PandasDF(_Connector):
-    def _config_init(self, attributes, filterdict, scoredict):
+    def _config_init(self, attributes, filterdict, scoredict, threshold=0.5):
         """
 
         Args:
-            filterdict(dict): dictionnary two lists of values: 'any' and 'all' {'all':['country_code'],'any':['duns','taxid']}
             attributes:
-            relevance:
+            filterdict(dict): dictionnary two lists of values: 'any' and 'all' {'all':['country_code'],'any':['duns','taxid']}
+            scoredict:
 
         Returns:
-
+            None
         """
-        #TODO: Initiate the filterdict, attributes, and relevance
-        self.filterdict = filterdict
-        self.scoredict = scoredict
+        self.filterdict = functions.ScoreDict(filterdict)
+        self.scoredict = functions.ScoreDict(scoredict)
+        self.threshold = threshold
+        relevance = self.filterdict.scores().union(self.scoredict.scores())
         return set(attributes), set(relevance)
+
+
     def _search(self, query, on_index=None, return_filtered=True):
         table1 = self.all_any(query=query, on_index=on_index, return_filtered=return_filtered)
         table2 = self.compare(query=query, on_index=table1.index, return_filtered=return_filtered)
@@ -151,6 +154,6 @@ class PandasDF(_Connector):
         targets =self.source.loc[on_index]
         table = functions.build_similarity_table(query=query,targets=targets,scoredict=self.scoredict)
         if return_filtered:
-            results = table.apply(lambda r: any(r > 0.5), axis=1)
+            results = table.apply(lambda r: any(r > self.threshold), axis=1)
             table = table.loc[results]
         return table

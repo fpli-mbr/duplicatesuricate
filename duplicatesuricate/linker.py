@@ -1,7 +1,7 @@
 from connectors import _Connector
 from comparators import _Comparator
 from classifiers import _Classifier
-from array import _Array, _Col
+from xarray import _Array, _Col
 
 class _RecordLinker:
     def __init__(self, connector, comparator, classifier):

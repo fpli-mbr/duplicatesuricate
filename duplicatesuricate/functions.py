@@ -215,7 +215,6 @@ def _compare(query, targets, on_cols, func, suffix):
     if the query is null for the given column name, it retuns an empty column
     Args:
         query (pd.Series): query
-        on_index (pd.Index): index on which to compare
         on_cols (list): list of columns on which to compare
         func (func): comparison function
         suffix (str): string to be added after column name

@@ -1,5 +1,5 @@
 import pandas as pd
-from array import _Array, _Col
+from xarray import _Array, _Col
 
 
 # noinspection PySetFunctionToLiteral,PySetFunctionToLiteral
