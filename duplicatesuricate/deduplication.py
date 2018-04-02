@@ -1,10 +1,12 @@
+from functions import _fuzzyscore, _fuzzy_udf, _token_udf, _exactmatch, _exact_udf, _acronym_udf, _scorename, \
+    _scorefuncs, _scoringkeys, _rmv_end_str
+
 __version__ = '0.4.3'
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
-from fuzzywuzzy.fuzz import ratio, token_set_ratio
 
 # noinspection PyUnresolvedReferences
 from pyspark.sql.functions import udf, lit
@@ -15,226 +17,6 @@ from pyspark.ml import Pipeline
 
 connector = False
 
-class TargetConnector:
-    def __init__(self, compared_cols, select_cols,score_cols):
-        """
-
-        Args:
-            compared_cols (list):
-            select_cols (list):
-            score_cols (list):
-        """
-        self.compared_cols = compared_cols
-        self.select_cols = select_cols
-        self.score_cols = score_cols
-
-    def search(self, query, on_index, return_filtered):
-        """
-
-        Args:
-            query (pd.Series): the query
-
-        Returns:
-            pd.DataFrame: the potential matches record
-        """
-        df = self.search_func(query, on_index=on_index, return_filtered=return_filtered)
-        # TODO: check equality of two sets
-        assert all(set(df.columns) == set(self.select_cols + self.score_cols))
-        return df
-
-class PandasConnector:
-    def __init__(self, df, filterdict = None, score_intermediate = None):
-        self.score_cols = []
-        self.compared_cols = []
-        self,df = df
-        if filterdict is not None:
-            for c in ['all', 'any']:
-                if filterdict.get(c) is None:
-                    filterdict[c] = None
-            self.filterdict = filterdict
-
-            incols, outcols = _transform_scoredict_scorecols(self.filterdict)
-            self.compared_cols += incols
-            self.score_cols += outcols
-        else:
-            self.filterdict = None
-
-        if score_intermediate is not None:
-            self.intermediate_score = score_intermediate
-            incols, outcols = _transform_scoredict_scorecols(self.intermediate_score)
-            self.compared_cols += incols
-            self.score_cols += outcols
-        else:
-            self.intermediate_score = None
-    def filter_all_any(self, query, on_index=None, filterdict=None, return_filtered=True):
-        """
-        returns a pre-filtered table score calculated on the column names provided in the filterdict.
-        in the values for 'any': an exact match on any of these columns ensure the row is kept for further analysis
-        in the values for 'all': an exact match on all of these columns ensure the row is kept for further analysis
-        if the row does not have any exact match for the 'any' columns, or if it has one bad match for the 'all' columns,
-        it is filtered out
-        MODIF: if return_filtered, this will not filter the table at all but just returns the scores
-        Args:
-            query (pd.Series): query
-            on_index (pd.Index): index
-            filterdict(dict): dictionnary two lists of values: 'any' and 'all' {'all':['country_code'],'any':['duns','taxid']}
-            return_filtered (bool): whether or not to filter after calculation of the first scores (Not filtering used for deep inspections of the results)
-
-        Returns:
-            pd.DataFrame: a DataFrame with the exact score of the columns provided in the filterdict
-
-        Examples:
-            table = ['country_code_exactscore','duns_exactscore']
-        """
-        # create repository for the score
-        table = pd.DataFrame(index=on_index)
-
-        # Tackle the case where no index is given: use the whole index available
-        if on_index is None:
-            on_index = self.df.index
-
-        # if no specific filterdict is given use the one from init
-        if filterdict is None:
-            filterdict = self.filterdict
-
-        # if no filter dict is given returns an empty table with all of the rows selected: no filterdict has been applied!
-        if filterdict is None:
-            return table
-
-        match_any_cols = filterdict.get('any')
-        match_all_cols = filterdict.get('all')
-
-        # same as comment above
-        if match_all_cols is None and match_any_cols is None:
-            return table
-
-        df = self.df.loc[on_index]
-
-        # perform the "any criterias match" logic
-        if match_any_cols is not None:
-            match_any_df = pd.DataFrame(index=on_index)
-            for c in match_any_cols:
-                match_any_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: _exactmatch(r, query[c]))
-            y = (match_any_df == 1)
-            assert isinstance(y, pd.DataFrame)
-
-            anycriteriasmatch = y.any(axis=1)
-            table = pd.concat([table, match_any_df], axis=1)
-        else:
-            anycriteriasmatch = pd.Series(index=on_index).fillna(False)
-
-        # perform the "all criterias match" logic
-        if match_all_cols is not None:
-            match_all_df = pd.DataFrame(index=on_index)
-            for c in match_all_cols:
-                match_all_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: _exactmatch(r, query[c]))
-            y = (match_all_df == 1)
-            assert isinstance(y, pd.DataFrame)
-            allcriteriasmatch = y.all(axis=1)
-
-            table = pd.concat([table, match_all_df], axis=1)
-        else:
-            allcriteriasmatch = pd.Series(index=on_index).fillna(False)
-
-        # perform the all criterias match OR at least one criteria match logic
-        results = (allcriteriasmatch | anycriteriasmatch)
-
-        assert isinstance(table, pd.DataFrame)
-
-        if return_filtered is True:
-            table = table.loc[results]
-
-        return table
-    def build_similarity_table(self,
-                               query,
-                               on_index=None,
-                               scoredict=None):
-        """
-        Return the similarity features between the query and the rows in the required index, with the selected comparison functions.
-        They can be fuzzy, token-based, exact, or acronym.
-        The attribute request creates two column: one with the value for the query and one with the value for the row
-
-        Args:
-            query (pd.Series): attributes of the query
-            on_index (pd.Index):
-            scoredict (dict):
-
-        Returns:
-            pd.DataFrame:
-
-        Examples:
-            scoredict={'attributes':['name_len'],
-                        'fuzzy':['name','street']
-                        'token':'name',
-                        'exact':'id'
-                        'acronym':'name'}
-            returns a comparison table with the following column names (and the associated scores):
-                ['name_len_query','name_len_row','name_fuzzyscore','street_fuzzyscore',
-                'name_tokenscore','id_exactscore','name_acronymscore']
-        """
-
-        if on_index is None:
-            on_index = self.df.index
-
-        if scoredict is None:
-            scoredict = self.total_scoredict
-
-        table_score = pd.DataFrame(index=on_index)
-
-        attributes_cols = scoredict.get('attributes')
-        if attributes_cols is not None:
-            for c in attributes_cols:
-                table_score[c + '_source'] = query[c]
-                table_score[c + '_target'] = self.df.loc[on_index, c]
-
-        for c in _scoringkeys:
-            table = self._compare(query, on_index=on_index, on_cols=scoredict.get(c), func=_scorefuncs[c],
-                                  suffix=_scorename[c])
-            table_score = pd.concat([table_score, table], axis=1)
-
-        return table_score
-
-
-
-    def _filter_compare(self, query, return_filtered = True, on_index=None):
-        table_score_complete = self.filter_all_any(query=query,
-                                                   on_index=on_index,
-                                                   filterdict=self.filterdict,
-                                                   return_filtered=return_filtered
-                                                   )
-
-        workingindex = table_score_complete.index
-
-        if table_score_complete.shape[0] == 0:
-            return None
-
-        else:
-            # do further scoring on the possible choices and the sure choices
-            table_intermediate = self.build_similarity_table(query=query,
-                                                             on_index=workingindex,
-                                                             scoredict=self.intermediate_score)
-
-            table_score_complete = table_score_complete.join(table_intermediate, how='left')
-            del table_intermediate
-
-            y_intermediate = table_score_complete.apply(lambda r: self.intermediate_func(r), axis=1)
-            y_intermediate = y_intermediate.astype(bool)
-
-            assert isinstance(y_intermediate, pd.Series)
-            assert (y_intermediate.dtype == bool)
-
-            if return_filtered is True:
-                table_score_complete = table_score_complete.loc[y_intermediate]
-            return table_score_complete
-
-    def _score_intermediate(self):
-
-        # TODO
-
-class PandasComparator:
-    def __init__(self, df):
 
 class Suricate:
     def __init__(self, input_records,
@@ -1107,131 +889,6 @@ def _threshold_based_decision(row, thresholds):
     return result
 
 
-def _convert_fuzzratio(x):
-    """
-    convert a ratio between 0 and 100 to a ratio between 1 and -1
-    Args:
-        x (float):
-
-    Returns:
-        float
-    """
-    score = x / 50 - 1
-    return score
-
-
-def _fuzzyscore(a, b):
-    """
-    fuzzyscore using fuzzywuzzy.ratio
-    Args:
-        a (str):
-        b (str):
-
-    Returns:
-        float score between -1 and 1
-    """
-    if pd.isnull(a) or pd.isnull(b):
-        return 0.0
-    else:
-        score = _convert_fuzzratio(ratio(a, b))
-        return score
-
-
-_fuzzy_udf = udf(lambda a, b: _fuzzyscore(a, b), FloatType())
-
-
-def _tokenscore(a, b):
-    """
-    fuzzyscore using fuzzywuzzy.token_set_ratio
-    Args:
-        a (str):
-        b (str):
-
-    Returns:
-        float score between -1 and 1
-    """
-    if pd.isnull(a) or pd.isnull(b):
-        return 0.0
-    else:
-        score = _convert_fuzzratio(token_set_ratio(a, b))
-        return score
-
-
-_token_udf = udf(lambda a, b: _tokenscore(a, b), FloatType())
-
-
-def _exactmatch(a, b):
-    if pd.isnull(a) or pd.isnull(b):
-        return 0.0
-    else:
-        if a == b:
-            return 1.0
-        else:
-            return -1.0
-
-
-_exact_udf = udf(lambda a, b: _exactmatch(a, b), FloatType())
-
-
-def _acronym(s):
-    """
-    make an acronym of the string: take the first line of each token
-    Args:
-        s (str):
-
-    Returns:
-        str
-    """
-    m = s.split(' ')
-    if m is None:
-        return None
-    else:
-        a = ''.join([s[0] for s in m])
-        return a
-
-
-def _compare_acronym(a, b, minaccrolength=3):
-    """
-    compare the acronym of two strings
-    Args:
-        a (str):
-        b (str):
-        minaccrolength (int): minimum length of accronym
-
-    Returns:
-        float : number between 0 and 1
-    """
-    if pd.isnull(a) or pd.isnull(b):
-        return 0.0
-    else:
-        a_acronyme = _acronym(a)
-        b_acronyme = _acronym(b)
-        if min(len(a_acronyme), len(b_acronyme)) >= minaccrolength:
-            a_score_acronyme = _tokenscore(a_acronyme, b)
-            b_score_acronyme = _tokenscore(a, b_acronyme)
-            if all(pd.isnull([a_score_acronyme, b_score_acronyme])):
-                return 0.0
-            else:
-                max_score = np.max([a_score_acronyme, b_score_acronyme])
-                return max_score
-        else:
-            return 0.0
-
-
-_acronym_udf = udf(lambda a, b: _compare_acronym(a, b), FloatType())
-
-_scorename = {'fuzzy': '_fuzzyscore',
-              'token': '_tokenscore',
-              'exact': '_exactscore',
-              'acronym': '_acronymscore'}
-
-_scorefuncs = {'fuzzy': _fuzzyscore,
-               'token': _tokenscore,
-               'exact': _exactmatch,
-               'acronym': _compare_acronym}
-_scoringkeys = list(_scorename.keys())
-
-
 class Scorer:
     def __init__(self, df, filterdict=None, score_intermediate=None, decision_intermediate=None, score_further=None,
                  fillna=0):
@@ -1300,7 +957,8 @@ class Scorer:
         self.input_records = pd.DataFrame()
 
         if connector is True:
-            self.target_connector = TargetConnector()
+            pass
+            # self.target_connector = TargetConnector()
         else:
             self.target_connector = None
 
@@ -2009,18 +1667,6 @@ class SparkClassifier:
         else:
             dp = x_pred.select(['y_proba']).toPandas()
         return dp['y_proba']
-
-
-def _rmv_end_str(w, s):
-    """
-    remove str at the end of tken
-    :param w: str, token to be cleaned
-    :param s: str, string to be removed
-    :return: str
-    """
-    if w.endswith(s):
-        w = w[:-len(s)]
-    return w
 
 
 _sparktypedict = dict()

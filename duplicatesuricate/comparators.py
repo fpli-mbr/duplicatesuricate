@@ -1,6 +1,8 @@
 import pandas as pd
 from array import _Array, _Col
 
+
+# noinspection PySetFunctionToLiteral,PySetFunctionToLiteral
 class _Comparator:
     def __init__(self, **kwargs):
         self.compared, self.scored = self._config_init(**kwargs)

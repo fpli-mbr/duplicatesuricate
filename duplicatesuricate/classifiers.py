@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-class _Evaluator:
+class _Classifier:
     def __init__(self, **kwargs):
         """
         Create a model used only for scoring (for example for creating training data)
@@ -14,6 +14,7 @@ class _Evaluator:
         assert isinstance(self.used, set)
         pass
 
+    # noinspection PySetFunctionToLiteral
     def _config_init(self, *args,**kwargs):
         used = set(['info_score', 'relevance'])
         return used
