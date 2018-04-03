@@ -1,5 +1,5 @@
 import pandas as pd
-from xarray import _Array, _Col
+import xarray
 import functions
 
 # noinspection PySetFunctionToLiteral,PySetFunctionToLiteral
@@ -18,13 +18,13 @@ class _Comparator:
     def compare(self, query, targets):
         """
         Args:
-            query (_Col):
-            targets (_Array):
+            query (xarray.DepCol):
+            targets (xarray.DepArray):
 
         Returns:
             _Array
         """
-        results = _Array(self._compare(query=query, targets=targets))
+        results = xarray.DepArray(self._compare(query=query, targets=targets))
         assert set(results.columns) == self.scored
         return results
 
@@ -36,9 +36,15 @@ class _Comparator:
 class PandasComparator(_Comparator):
     def _config_init(self, scoredict, **kwargs):
         self.scoredict = functions.ScoreDict(scoredict)
-        compared = scoredict.compared()
-        scores = scoredict.scores()
+        compared = self.scoredict.compared()
+        scores = self.scoredict.scores()
         return compared, scores
     def _compare(self, query, targets):
-        table = functions.build_similarity_table(query=query,targets=targets,scoredict=self.scoredict)
+        if type(targets) == xarray.DepArray:
+            df = targets.df
+        elif type(targets) == pd.DataFrame:
+            df = targets
+        else:
+            df = targets
+        table = functions.build_similarity_table(query=query,targets=df,scoredict=self.scoredict)
         return table

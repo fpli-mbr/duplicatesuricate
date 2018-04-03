@@ -1,6 +1,6 @@
 import pandas as pd
 
-class _Array:
+class DepArray:
     def __init__(self, X):
         if type(X) == pd.DataFrame:
             self.struct = 'pandas'
@@ -19,9 +19,9 @@ class _Array:
             _array
         '''
         if self.struct == 'pandas':
-            return _Array(self.df.loc[:, cols])
+            return DepArray(self.df.loc[:, cols])
         else:
-            return _Array(self.df.select(cols))
+            return DepArray(self.df.select(cols))
 
     def count(self):
         if self.struct == 'pandas':
@@ -29,12 +29,24 @@ class _Array:
         else:
             return self.df.count()
     def union(self, X):
-        if self.struct == 'pandas':
-            return pd.concat([self.df, X], axis=1)
-        else:
-            return self.df.union(X)
+        """
 
-class _Col:
+        Args:
+            X (DepArray):
+
+        Returns:
+
+        """
+        if self.struct == 'pandas':
+            if X.struct == 'pandas':
+                newdf = pd.concat([self.df, X.df], axis=1)
+            else:
+                newdf = pd.concat([self.df, X.df.toPandas()], axis=1)
+        else:
+            newdf = self.df.union(X)
+        return DepArray(newdf)
+
+class DepCol:
     def __init__(self,y):
         if type(y) == pd.Series:
             self.struct = 'pandas'
@@ -44,9 +56,11 @@ class _Col:
             self.struct = None
 
         pass
-    def sort(self, ascending = True):
+    def sort(self, ascending = False):
         if self.struct == 'pandas':
-            return self.y.sort_values(ascending)
+            newy = self.y.sort_values(ascending=ascending)
         else:
             #TODO: complete with pyspark logic
-            return self.y.sort()
+            newy = self.y
+
+        return DepCol(newy)

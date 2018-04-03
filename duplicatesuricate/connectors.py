@@ -1,5 +1,5 @@
 import pandas as pd
-from xarray import _Array
+import xarray
 import functions
 
 class _Connector:
@@ -26,9 +26,9 @@ class _Connector:
             on_index: if not None, this parameter specifies the output rows needed
 
         Returns:
-            _Array
+            xarray.DepArray
         '''
-        results = _Array(self._search(query=query, on_index=on_index, **kwargs))
+        results = xarray.DepArray(self._search(query=query, on_index=on_index, **kwargs))
         assert set(results.columns) == self.output
         return results
 
@@ -41,7 +41,7 @@ class _Connector:
     def _config_search(self, **kwargs):
         pass
     def _search(self, query, on_index=None, **kwargs):
-        results = _Array(pd.DataFrame(columns=self.output))
+        results = xarray.DepArray(pd.DataFrame(columns=self.output))
 
         return results
 
@@ -67,7 +67,7 @@ class PandasDF(_Connector):
     def _search(self, query, on_index=None, return_filtered=True):
         results1 = self.all_any(query=query, on_index=on_index, return_filtered=return_filtered)
         results2 = self.compare(query=query, on_index=results1.index, return_filtered=return_filtered)
-        table = pd.concat([results1.loc[results1.index],results2], axis=1)
+        table = pd.concat([results1.loc[results2.index],results2], axis=1)
         return table
 
     def all_any(self, query, on_index=None, return_filtered = True):

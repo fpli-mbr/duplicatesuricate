@@ -1,9 +1,9 @@
 from connectors import _Connector
 from comparators import _Comparator
 from classifiers import _Classifier
-from xarray import _Array, _Col
+from xarray import DepArray, DepCol
 
-class _RecordLinker:
+class RecordLinker:
     def __init__(self, connector, comparator, classifier):
         '''
 
@@ -26,7 +26,7 @@ class _RecordLinker:
             bool:
         '''
         assert self.comparator.compared.issubset(self.connector.attributes)
-        assert self.classifier.used.issubset(self.connector.relevance.union(self.comparator.scored))
+        assert self.classifier.scores.issubset(self.connector.relevance.union(self.comparator.scored))
         return True
 
     def predict_proba(self, query, on_index=None):
@@ -40,7 +40,7 @@ class _RecordLinker:
             query: information available on our query
             on_index (pd.Index): index on which to do the prediction
         Returns:
-            _Col: the probability vector of the target records being the same as the query
+            DepCol: the probability vector of the target records being the same as the query
 
         """
         output = self.connector.search(query, on_index=on_index)
@@ -60,13 +60,8 @@ class _RecordLinker:
             y_proba = self.classifier.predict_proba(scores)
 
             # sort the results
-            y_proba = y_proba.sort_values(ascending=False)
+            y_proba = y_proba.sort(ascending=False)
 
             del scores
 
             return y_proba
-
-es = _Connector()
-fz = _Comparator()
-ml = _Classifier()
-rl = _RecordLinker(connector=es, comparator=fz, classifier=ml)

@@ -31,9 +31,23 @@ class ScoreDict(dict):
     def scores(self):
         score_cols = set(self._unpack()[1])
         return score_cols
-    def from_cols(scorecols):
+    def to_dict(self):
+        m=dict()
+        for k in self.keys():
+            m[k] = self[k]
+        return m
+
+    @classmethod
+    def from_cols(cls,scorecols):
+        """
+        Args:
+            scorecols (set): list of scoring cols
+        Returns:
+
+        """
         x_col = set(scorecols)
         m_dic = {}
+        print(x_col)
 
         def _findscoreinfo(colname):
             if colname.endswith('_target'):

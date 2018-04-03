@@ -1,5 +1,5 @@
-from xarray import _Array, _Col
-
+import xarray
+import functions
 import numpy as np
 import pandas as pd
 from pyspark.ml import Pipeline
@@ -22,21 +22,21 @@ class _Classifier:
         Args:
             scoredict (dict): {'fuzzy':['name','street'],'token':['name_wostopwords'],'acronym':None}
         """
-        self.used = self._config_init(**kwargs)
-        assert isinstance(self.used, set)
+        self.scores = self._config_init(**kwargs)
+        assert isinstance(self.scores, set)
         pass
 
     # noinspection PySetFunctionToLiteral
     def _config_init(self, *args,**kwargs):
-        used = set(['info_score', 'relevance'])
-        return used
+        scores = set(['info_score', 'relevance'])
+        return scores
 
     def fit(self, X, y):
         """
         Do nothing
         Args:
-            X (_Array):
-            y (_Col):
+            X (xarray.DepArray):
+            y (xarray.DepCol):
 
         Returns:
             None
@@ -47,13 +47,17 @@ class _Classifier:
         """
         A dart-throwing chump generates a random probability vector for the sake of coherency with other classifier
         Args:
-            X (_Array):
+            X (xarray.DepArray):
 
         Returns:
-            _Col
+            xarray.DepCol
         """
+        y_proba = self._predict_proba(X)
+        y_proba = xarray.DepCol(y_proba)
+        return y_proba
+    def _predict_proba(self, X):
         y_proba = np.random.random(size=X.count())
-        y_proba = pd.Series(y_proba, index=X.index)
+        y_proba = pd.Series(y_proba)
         return y_proba
 
 
@@ -67,7 +71,7 @@ class SparkClassifier:
         dm.fit(Xytrain)
         y_proba = dm.predict_proba(x_score)
     """
-
+    #TODO: rework this classifier
     def __init__(self, sqlContext, verbose=True):
         """
         Create the model
@@ -152,7 +156,7 @@ class SparkClassifier:
         x_pred = x_pred.withColumn('y_proba', proba_udf(x_pred["probability"]))
         return x_pred
 
-    def predict_proba(self, X, index_col=None):
+    def _predict_proba(self, X, index_col=None):
         """
         This is the evaluation function.
         It takes as input a DataFrame with each row being the similarity score between the query and the target records.
@@ -214,7 +218,7 @@ class ScikitLearnClassifier:
             self.model = RandomForestClassifier(n_estimators=n_estimators)
         else:
             self.model = model
-        self.used_cols = []
+        self.scores = set()
 
         pass
 
@@ -231,7 +235,7 @@ class ScikitLearnClassifier:
 
         """
 
-        self.used_cols = X.columns
+        self.scores = set(X.columns)
 
         start = pd.datetime.now()
 
@@ -256,7 +260,7 @@ class ScikitLearnClassifier:
 
         return None
 
-    def predict_proba(self, x_score):
+    def _predict_proba(self, x_score):
         """
         This is the evaluation function.
         It takes as input a DataFrame with each row being the similarity score between the query and the target records.
@@ -274,12 +278,12 @@ class ScikitLearnClassifier:
         if x_score is None or x_score.shape[0] == 0:
             return None
         else:
-            missing_cols = list(filter(lambda x: x not in x_score.columns, self.used_cols))
+            missing_cols = list(filter(lambda x: x not in x_score.columns, self.scores))
             if len(missing_cols) > 0:
                 raise KeyError('not all training columns are found in the output of the scorer:', missing_cols)
 
             # re-arrange the column order
-            x_score = x_score[self.used_cols]
+            x_score = x_score[self.scores]
 
             # launch prediction using the predict_proba of the scikit-learn module
             y_proba = \
@@ -288,8 +292,8 @@ class ScikitLearnClassifier:
             return y_proba
 
 
-class DummyClassifier:
-    def __init__(self, scoredict=None):
+class DummyClassifier(_Classifier):
+    def _config_init(self, scoredict=None):
         """
         Create a model used only for scoring (for example for creating training data)
         used_cols (list): list of columns necessary for decision
@@ -297,42 +301,31 @@ class DummyClassifier:
         Args:
             scoredict (dict): {'fuzzy':['name','street'],'token':['name_wostopwords'],'acronym':None}
         """
+
+        pass
         if scoredict is None:
-            self.scoredict = dict()
+            self.scoredict = functions.ScoreDict(dict())
         else:
-            self.scoredict = scoredict
-        compared_cols, used_cols = _transform_scoredict_scorecols(scoredict)
-        self.used_cols = used_cols
-        self.compared_cols = compared_cols
-        pass
+            self.scoredict = functions.ScoreDict(scoredict)
+        self.scores = self.scoredict.scores()
+        return self.scores
 
-    def fit(self, X, y):
-        """
-        Do nothing
-        Args:
-            X:
-            y:
 
-        Returns:
-
-        """
-        pass
-
-    def predict_proba(self, X):
+    def _predict_proba(self, X):
         """
         A dart-throwing chump generates a random probability vector for the sake of coherency with other classifier
         Args:
-            X:
+            X (xarray.DepArray):
 
         Returns:
             pd.Series
         """
-        y_proba = np.random.random(size=X.shape[0])
-        y_proba = pd.Series(y_proba, index=X.index)
+        y_proba = np.random.random(size=X.count())
+        y_proba = pd.Series(y_proba)
         return y_proba
 
 
-class RuleBasedClassifier:
+class RuleBasedClassifier(_Classifier):
     """
     This evaluation model applies a hard-coded evaluation function to return a probability vector
     Examples:
@@ -342,27 +335,19 @@ class RuleBasedClassifier:
         y_proba = dm.predict_proba(x_score)
     """
 
-    def __init__(self, used_cols, eval_func=None):
+    def _config_init(self, scores, eval_func=None):
         """
         Create the model
         Args:
-            used_cols (list): list of columns necessary for decision
+            scores (list): list of columns necessary for decision
             eval_func (func): evaluation function to be applied. must return a probability vector
         """
-        self.used_cols = used_cols
+        self.scores = scores
         if eval_func is None:
             self.eval_func = lambda r: sum(r) / len(r)
-        self.scoredict = _transform_scorecols_scoredict(self.used_cols)
-        self.compared_cols = _transform_scoredict_scorecols(self.scoredict)[0]
-        pass
-
-    def fit(self):
-        """
-        pass
-        Returns:
-            None
-        """
-        pass
+        self.scoredict = functions.ScoreDict.from_cols(self.scores)
+        self.compared = self.scoredict.compared()
+        return self.scores
 
     @classmethod
     def from_dict(cls, scoredict, evalfunc=None):
@@ -385,7 +370,7 @@ class RuleBasedClassifier:
         x = RuleBasedClassifier(used_cols=used_cols, eval_func=evalfunc)
         return x
 
-    def predict_proba(self, x_score):
+    def _predict_proba(self, x_score):
         """
         This is the evaluation function.
         It takes as input a DataFrame with each row being the similarity score between the query and the target records.
@@ -398,10 +383,10 @@ class RuleBasedClassifier:
         Returns:
             pd.Series : the probability vector of the target records being the same as the query
         """
-        missing_cols = list(filter(lambda x: x not in x_score.columns, self.used_cols))
+        missing_cols = list(filter(lambda x: x not in x_score.columns, self.scores))
         if len(missing_cols) > 0:
             raise KeyError('not all training columns are found in the output of the scorer:', missing_cols)
-        x_score = x_score[self.used_cols]
+        x_score = x_score[self.scores]
 
         y_proba = x_score.apply(lambda r: self.eval_func(r), axis=1)
         y_proba.name = 1
