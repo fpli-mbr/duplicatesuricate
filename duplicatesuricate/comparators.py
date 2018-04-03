@@ -17,7 +17,6 @@ class _Comparator:
 
     def compare(self, query, targets):
         """
-
         Args:
             query (_Col):
             targets (_Array):

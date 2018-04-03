@@ -31,6 +31,41 @@ class ScoreDict(dict):
     def scores(self):
         score_cols = set(self._unpack()[1])
         return score_cols
+    def from_cols(scorecols):
+        x_col = set(scorecols)
+        m_dic = {}
+
+        def _findscoreinfo(colname):
+            if colname.endswith('_target'):
+                k = 'attributes'
+                u = _rmv_end_str(colname, '_target')
+                return k, u
+            elif colname.endswith('_source'):
+                k = 'attributes'
+                u = _rmv_end_str(colname, '_source')
+                return k, u
+            elif colname.endswith('score'):
+                u = _rmv_end_str(colname, 'score')
+                for k in ['fuzzy', 'token', 'exact', 'acronym']:
+                    if u.endswith('_' + k):
+                        u = _rmv_end_str(u, '_' + k)
+                        return k, u
+            else:
+                return None
+
+        for c in x_col:
+            result = _findscoreinfo(c)
+            if result is not None:
+                method, column = result[0], result[1]
+                if m_dic.get(method) is None:
+                    m_dic[method] = [column]
+                else:
+                    m_dic[method] = list(set(m_dic[method] + [column]))
+        if len(m_dic) > 0:
+            return ScoreDict(m_dic)
+        else:
+            return None
+
 
 def _convert_fuzzratio(x):
     """
