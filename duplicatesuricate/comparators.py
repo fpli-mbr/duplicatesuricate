@@ -1,6 +1,6 @@
 import pandas as pd
 from xarray import _Array, _Col
-
+import functions
 
 # noinspection PySetFunctionToLiteral,PySetFunctionToLiteral
 class _Comparator:
@@ -16,7 +16,7 @@ class _Comparator:
         return compared, scored
 
     def compare(self, query, targets):
-        '''
+        """
 
         Args:
             query (_Col):
@@ -24,8 +24,22 @@ class _Comparator:
 
         Returns:
             _Array
-        '''
-        results = pd.DataFrame(columns=self.scored)
-
+        """
+        results = _Array(self._compare(query=query, targets=targets))
         assert set(results.columns) == self.scored
         return results
+
+    def _compare(self, query, targets):
+        df = pd.DataFrame(columns=self.scored)
+        return df
+
+
+class PandasComparator(_Comparator):
+    def _config_init(self, scoredict, **kwargs):
+        self.scoredict = functions.ScoreDict(scoredict)
+        compared = scoredict.compared()
+        scores = scoredict.scores()
+        return compared, scores
+    def _compare(self, query, targets):
+        table = functions.build_similarity_table(query=query,targets=targets,scoredict=self.scoredict)
+        return table

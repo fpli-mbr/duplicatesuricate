@@ -1,3 +1,5 @@
+from xarray import _Array, _Col
+
 import numpy as np
 import pandas as pd
 from pyspark.ml import Pipeline
@@ -33,8 +35,8 @@ class _Classifier:
         """
         Do nothing
         Args:
-            X:
-            y:
+            X (_Array):
+            y (_Col):
 
         Returns:
             None
@@ -45,12 +47,12 @@ class _Classifier:
         """
         A dart-throwing chump generates a random probability vector for the sake of coherency with other classifier
         Args:
-            X:
+            X (_Array):
 
         Returns:
-            pd.Series
+            _Col
         """
-        y_proba = np.random.random(size=X.shape[0])
+        y_proba = np.random.random(size=X.count())
         y_proba = pd.Series(y_proba, index=X.index)
         return y_proba
 
