@@ -9,6 +9,30 @@ class DepArray:
             self.struct = None
             self.columns = X.schema.names
         self.df = X
+    def toPandas(self):
+        """
+
+        Returns:
+            pd.DataFrame
+        """
+        if self.struct == 'pandas':
+            return self.df
+        else:
+            return self.df.toPandas()
+    def toSpark(self,sqlContext):
+        """
+
+        Args:
+            sqlContext:
+
+        Returns:
+
+        """
+        #TODO: Docstring
+        if self.struct == 'pandas':
+            return sqlContext.createDataFrame(self.df)
+        else:
+            return self.df
     def select(self, cols):
         '''
 
@@ -18,6 +42,8 @@ class DepArray:
         Returns:
             _array
         '''
+        if type(cols) == set:
+            cols = list(cols)
         if self.struct == 'pandas':
             return DepArray(self.df.loc[:, cols])
         else:
@@ -28,6 +54,11 @@ class DepArray:
             return self.df.shape[0]
         else:
             return self.df.count()
+    def show(self):
+        if self.struct == 'pandas':
+            return self.df.head()
+        else:
+            return self.df.show()
     def union(self, X):
         """
 
@@ -45,6 +76,13 @@ class DepArray:
         else:
             newdf = self.df.union(X)
         return DepArray(newdf)
+    def withColumn(self, colname, func, on_cols):
+        if self.struct == 'pandas':
+            x = self.df.copy()
+            x[colname] = x.apply(lambda r: func(on_cols), axis = 1)
+        else:
+            x = self.df.withColumn(colname, func(on_cols))
+        return DepArray(x)
 
 class DepCol:
     def __init__(self,y):
@@ -64,3 +102,17 @@ class DepCol:
             newy = self.y
 
         return DepCol(newy)
+    def toPandas(self):
+        """
+
+        Returns:
+            pd.Series
+        """
+        if self.struct == 'pandas':
+            return self.y
+        else:
+            #TODO
+            return pd.Series(self.y)
+    def toSpark(self):
+        #TODO
+        return None

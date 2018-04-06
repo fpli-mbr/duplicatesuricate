@@ -10,7 +10,7 @@ from pyspark.sql.types import FloatType
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
 
-from deduplication import _transform_pandas_spark, _transform_scoredict_scorecols, _transform_scorecols_scoredict
+from deduplication import _transform_pandas_spark
 
 
 class _Classifier:
@@ -126,7 +126,7 @@ class SparkClassifier:
 
         if self.verbose:
             # show precision and recall score of the classifier on training data
-            y_pred = self.predict_proba(Xs)
+            y_pred = self._predict_proba(Xs)
             assert isinstance(y_pred, pd.Series)
             # noinspection PyTypeChecker
             y_pred = (y_pred > 0.5)
@@ -269,21 +269,22 @@ class ScikitLearnClassifier:
         The scoring tables column names must fit the training table column names. (accessible via self.decisioncols).
         If x_score is None or has no rows it returns None.
         Args:
-            x_score (pd.DataFrame): the table containing the scoring records
+            x_score (xarray.DepArray): the table containing the scoring records
 
         Returns:
             pd.Series : the probability vector of the target records being the same as the query
 
         """
+        x_score = x_score.toPandas()
         if x_score is None or x_score.shape[0] == 0:
             return None
         else:
-            missing_cols = list(filter(lambda x: x not in x_score.columns, self.scores))
+            missing_cols = self.scores.difference(set(x_score.columns))
             if len(missing_cols) > 0:
                 raise KeyError('not all training columns are found in the output of the scorer:', missing_cols)
 
             # re-arrange the column order
-            x_score = x_score[self.scores]
+            x_score = x_score[list(self.scores)]
 
             # launch prediction using the predict_proba of the scikit-learn module
             y_proba = \
@@ -335,18 +336,18 @@ class RuleBasedClassifier(_Classifier):
         y_proba = dm.predict_proba(x_score)
     """
 
-    def _config_init(self, scores, eval_func=None):
+    def _config_init(self, scores=None, eval_func=None):
         """
         Create the model
         Args:
-            scores (list): list of columns necessary for decision
+            scores (set): list of columns necessary for decision
             eval_func (func): evaluation function to be applied. must return a probability vector
         """
-        self.scores = scores
         if eval_func is None:
             self.eval_func = lambda r: sum(r) / len(r)
-        self.scoredict = functions.ScoreDict.from_cols(self.scores)
+        self.scoredict = functions.ScoreDict.from_cols(scores)
         self.compared = self.scoredict.compared()
+        self.scores = self.scoredict.scores()
         return self.scores
 
     @classmethod
@@ -366,8 +367,9 @@ class RuleBasedClassifier(_Classifier):
                         'exact':'id'
                         'acronym':'name'}
         """
-        compared_cols, used_cols = _transform_scoredict_scorecols(scoredict)
-        x = RuleBasedClassifier(used_cols=used_cols, eval_func=evalfunc)
+        scoredict = functions.ScoreDict(scoredict)
+        scores = scoredict.scores()
+        x = RuleBasedClassifier(scores=scores, eval_func=evalfunc)
         return x
 
     def _predict_proba(self, x_score):
@@ -378,16 +380,16 @@ class RuleBasedClassifier(_Classifier):
         The scoring tables column names must fit the columns used for the model
         If x_score is None or has no rows it returns None.
         Args:
-            x_score (pd.DataFrame):the table containing the scoring records
+            x_score (xarray.DepArray):the table containing the scoring records
 
         Returns:
             pd.Series : the probability vector of the target records being the same as the query
         """
-        missing_cols = list(filter(lambda x: x not in x_score.columns, self.scores))
+        x_score = x_score.toPandas()
+        missing_cols = self.scores.difference(set(x_score.columns))
         if len(missing_cols) > 0:
             raise KeyError('not all training columns are found in the output of the scorer:', missing_cols)
-        x_score = x_score[self.scores]
-
+        x_score = x_score.loc[:,list(self.scores)]
         y_proba = x_score.apply(lambda r: self.eval_func(r), axis=1)
         y_proba.name = 1
 

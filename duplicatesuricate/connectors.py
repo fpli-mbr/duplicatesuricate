@@ -52,7 +52,7 @@ class PandasDF(_Connector):
         Args:
             attributes:
             filterdict(dict): dictionnary two lists of values: 'any' and 'all' {'all':['country_code'],'any':['duns','taxid']}
-            scoredict:
+            scoredict (dict):
 
         Returns:
             None
@@ -65,6 +65,16 @@ class PandasDF(_Connector):
 
 
     def _search(self, query, on_index=None, return_filtered=True):
+        """
+
+        Args:
+            query (pd.Series):
+            on_index (pd.Index):
+            return_filtered (bool):
+
+        Returns:
+            pd.DataFrame
+        """
         results1 = self.all_any(query=query, on_index=on_index, return_filtered=return_filtered)
         results2 = self.compare(query=query, on_index=results1.index, return_filtered=return_filtered)
         table = pd.concat([results1.loc[results2.index],results2], axis=1)
@@ -151,6 +161,16 @@ class PandasDF(_Connector):
         return table
 
     def compare(self, query, on_index, return_filtered=True):
+        """
+
+        Args:
+            query (pd.Series):
+            on_index (pd.Index):
+            return_filtered (bool):
+
+        Returns:
+            pd.DataFrame
+        """
         targets =self.source.loc[on_index]
         table = functions.build_similarity_table(query=query,targets=targets,scoredict=self.scoredict)
         if return_filtered:

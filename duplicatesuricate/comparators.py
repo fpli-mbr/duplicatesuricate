@@ -35,16 +35,31 @@ class _Comparator:
 
 class PandasComparator(_Comparator):
     def _config_init(self, scoredict, **kwargs):
+        """
+
+        Args:
+            scoredict (dict):
+            **kwargs:
+
+        Returns:
+
+        """
         self.scoredict = functions.ScoreDict(scoredict)
         compared = self.scoredict.compared()
         scores = self.scoredict.scores()
         return compared, scores
+
     def _compare(self, query, targets):
-        if type(targets) == xarray.DepArray:
-            df = targets.df
-        elif type(targets) == pd.DataFrame:
-            df = targets
-        else:
-            df = targets
-        table = functions.build_similarity_table(query=query,targets=df,scoredict=self.scoredict)
+        """
+
+        Args:
+            query (xarray.DepCol:
+            targets (xarray.DepArray):
+
+        Returns:
+            pd.DataFrame
+        """
+        df = targets.toPandas()
+        q = query.toPandas()
+        table = functions.build_similarity_table(query=q,targets=df,scoredict=self.scoredict)
         return table

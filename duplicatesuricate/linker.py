@@ -1,7 +1,8 @@
-from connectors import _Connector
-from comparators import _Comparator
-from classifiers import _Classifier
-from xarray import DepArray, DepCol
+import connectors
+import classifiers
+import comparators
+import xarray
+import pandas as pd
 
 class RecordLinker:
     def __init__(self, connector, comparator, classifier):
@@ -17,6 +18,8 @@ class RecordLinker:
         self.classifier = classifier
         self._coherency()
         print('init ok')
+        self.scores = self.classifier.scores
+        self.compared = self.comparator.compared
         pass
 
     def _coherency(self):
@@ -40,7 +43,7 @@ class RecordLinker:
             query: information available on our query
             on_index (pd.Index): index on which to do the prediction
         Returns:
-            DepCol: the probability vector of the target records being the same as the query
+            xarray.DepCol: the probability vector of the target records being the same as the query
 
         """
         output = self.connector.search(query, on_index=on_index)
