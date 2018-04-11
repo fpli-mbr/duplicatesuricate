@@ -46,6 +46,7 @@ class RecordLinker:
             xarray.DepCol: the probability vector of the target records being the same as the query
 
         """
+        query = xarray.DepCol(query)
         output = self.connector.search(query, on_index=on_index)
 
         if output is None or output.count() == 0:

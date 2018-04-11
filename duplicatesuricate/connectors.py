@@ -22,7 +22,7 @@ class _Connector:
         '''
 
         Args:
-            query:
+            query (xarray.DepCol):
             on_index: if not None, this parameter specifies the output rows needed
 
         Returns:

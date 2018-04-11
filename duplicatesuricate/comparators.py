@@ -53,7 +53,7 @@ class PandasComparator(_Comparator):
         """
 
         Args:
-            query (xarray.DepCol:
+            query (xarray.DepCol):
             targets (xarray.DepArray):
 
         Returns:

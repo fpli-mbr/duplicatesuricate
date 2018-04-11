@@ -90,6 +90,9 @@ class DepCol:
             self.struct = 'pandas'
             assert isinstance(y, pd.Series)
             self.y = y
+        elif type(y) == DepCol:
+            self.struct = y.struct
+            self.y = y.y
         else:
             self.struct = None
 
