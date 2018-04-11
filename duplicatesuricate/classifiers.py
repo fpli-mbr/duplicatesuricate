@@ -22,6 +22,7 @@ class _Classifier:
         Args:
             scoredict (dict): {'fuzzy':['name','street'],'token':['name_wostopwords'],'acronym':None}
         """
+        self.threshold = 0.5
         self.scores = self._config_init(**kwargs)
         assert isinstance(self.scores, set)
         pass

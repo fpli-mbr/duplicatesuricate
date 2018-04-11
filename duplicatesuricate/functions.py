@@ -47,7 +47,6 @@ class ScoreDict(dict):
         """
         x_col = set(scorecols)
         m_dic = {}
-        print(x_col)
 
         def _findscoreinfo(colname):
             if colname.endswith('_target'):

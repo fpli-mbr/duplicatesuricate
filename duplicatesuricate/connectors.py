@@ -44,6 +44,21 @@ class _Connector:
         results = xarray.DepArray(pd.DataFrame(columns=self.output))
 
         return results
+    def fetch(self, on_index):
+        """
+
+        Args:
+            on_index (list):
+
+        Returns:
+            xarray.DepArray
+        """
+        results = xarray.DepArray(self._fetch(on_index=on_index))
+        assert set(results.columns) == self.attributes
+        return results
+    def _fetch(self, on_index):
+        results = xarray.DepArray(pd.DataFrame(columns=self.attributes))
+        return results
 
 class PandasDF(_Connector):
     def _config_init(self, attributes, filterdict, scoredict, threshold=0.5):
@@ -80,6 +95,16 @@ class PandasDF(_Connector):
         results2 = self.compare(query=q, on_index=results1.index, return_filtered=return_filtered)
         table = pd.concat([results1.loc[results2.index],results2], axis=1)
         return table
+    def _fetch(self, on_index):
+        """
+
+        Args:
+            on_index (pd.Index):
+
+        Returns:
+            pd.DataFrame
+        """
+        return self.source.loc[on_index, self.attributes]
 
     def all_any(self, query, on_index=None, return_filtered = True):
         """

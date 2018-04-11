@@ -86,6 +86,8 @@ class DepArray:
 
 class DepCol:
     def __init__(self,y):
+        if y is None:
+            y = pd.Series()
         if type(y) == pd.Series:
             self.struct = 'pandas'
             assert isinstance(y, pd.Series)

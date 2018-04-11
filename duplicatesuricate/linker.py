@@ -69,3 +69,82 @@ class RecordLinker:
             del scores
 
             return y_proba
+    def predict(self, query, on_index=None):
+        """
+
+        Args:
+            query:
+            on_index (pd.Index):
+
+        Returns:
+            xarray.DepCol: the boolean vector of the target records being the same as the query
+        """
+        y_proba = self.predict_proba(query=query, on_index=on_index)
+        if y_proba is None:
+            return None
+        y_proba = y_proba.toPandas()
+        y_bool = (y_proba > self.classifier.threshold)
+        assert isinstance(y_bool, pd.Series)
+        y_bool = xarray.DepCol(y_bool)
+        return y_bool
+
+    def match_index(self, query, on_index=None, n_matches_max=None):
+        """
+        Args:
+            query:
+            on_index (pd.Index):
+
+        Returns:
+            list: a list of the matching indexes
+        """
+        if n_matches_max is None:
+            n_matches_max = 1
+        y_bool =self.predict(query=query, on_index=on_index)
+        if y_bool is None:
+            return None
+        else:
+            y_bool = y_bool.toPandas()
+            goodmatches = y_bool.loc[y_bool].index
+            if len(goodmatches) == 0:
+                return None
+            else:
+                goodmatches = goodmatches[:max(n_matches_max, len(goodmatches))]
+                goodmatches = list(goodmatches)
+                return goodmatches
+
+    def match_records(self, query, on_index=None):
+        """
+
+        Args:
+            query:
+            on_index (pd.Index):
+
+        Returns:
+            pd.DataFrame
+        """
+        goodmatches = self.match_index(query=query, on_index=on_index)
+        results = self.connector.fetch(on_index=goodmatches)
+        results = results.toPandas()
+        return results
+
+
+def  create_pandas_linker(source, filterdict, scoredict, scoredict2, scores):
+        """
+
+        Args:
+            source:
+            filterdict:
+            scoredict:
+            scoredict2:
+            scores:
+
+        Returns:
+            RecordLinker
+        """
+        connector = connectors.PandasDF(source=source, attributes=source.columns(), scoredict=scoredict, filterdict=filterdict)
+        comparator = comparators.PandasComparator(scoredict=scoredict2)
+        classifier = classifiers.RuleBasedClassifier(scores)
+        lk = RecordLinker(connector=connector,
+                                 comparator=comparator,
+                                 classifier=classifier)
+        return lk
