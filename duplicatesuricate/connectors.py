@@ -68,15 +68,16 @@ class PandasDF(_Connector):
         """
 
         Args:
-            query (pd.Series):
+            query (xarray.DepCol):
             on_index (pd.Index):
             return_filtered (bool):
 
         Returns:
             pd.DataFrame
         """
-        results1 = self.all_any(query=query, on_index=on_index, return_filtered=return_filtered)
-        results2 = self.compare(query=query, on_index=results1.index, return_filtered=return_filtered)
+        q = query.toPandas()
+        results1 = self.all_any(query=q, on_index=on_index, return_filtered=return_filtered)
+        results2 = self.compare(query=q, on_index=results1.index, return_filtered=return_filtered)
         table = pd.concat([results1.loc[results2.index],results2], axis=1)
         return table
 
