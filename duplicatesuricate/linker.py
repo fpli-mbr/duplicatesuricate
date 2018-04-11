@@ -3,6 +3,7 @@ import classifiers
 import comparators
 import xarray
 import pandas as pd
+import functions
 
 class RecordLinker:
     def __init__(self, connector, comparator, classifier):
@@ -29,6 +30,7 @@ class RecordLinker:
             bool:
         '''
         assert self.comparator.compared.issubset(self.connector.attributes)
+        assert len(self.connector.relevance.intersection(self.comparator.scored)) == 0
         assert self.classifier.scores.issubset(self.connector.relevance.union(self.comparator.scored))
         return True
 
@@ -128,7 +130,7 @@ class RecordLinker:
         return results
 
 
-def  create_pandas_linker(source, filterdict, scoredict, scoredict2, scores):
+def  create_pandas_linker(source, filterdict, scoredict, scoredict2=None, scores=None, X_train=None, y_train=None):
         """
 
         Args:
@@ -141,9 +143,15 @@ def  create_pandas_linker(source, filterdict, scoredict, scoredict2, scores):
         Returns:
             RecordLinker
         """
-        connector = connectors.PandasDF(source=source, attributes=source.columns(), scoredict=scoredict, filterdict=filterdict)
-        comparator = comparators.PandasComparator(scoredict=scoredict2)
-        classifier = classifiers.RuleBasedClassifier(scores)
+        connector = connectors.PandasDF(source=source, attributes=source.columns, scoredict=scoredict, filterdict=filterdict)
+        needed_scores = set(X_train.columns)
+        needed_scores = needed_scores.difference(connector.relevance)
+        needed_scores = functions.ScoreDict.from_cols(scorecols=needed_scores).to_dict()
+        comparator = comparators.PandasComparator(scoredict=needed_scores)
+        classifier = classifiers.ScikitLearnClassifier(n_estimators=100)
+        classifier.fit(X_train, y_train)
+        # classifier = classifiers.RuleBasedClassifier(scores)
+        #
         lk = RecordLinker(connector=connector,
                                  comparator=comparator,
                                  classifier=classifier)

@@ -14,7 +14,7 @@ from deduplication import _transform_pandas_spark
 
 
 class _Classifier:
-    def __init__(self, **kwargs):
+    def __init__(self, *args,**kwargs):
         """
         Create a model used only for scoring (for example for creating training data)
         used_cols (list): list of columns necessary for decision
@@ -23,7 +23,7 @@ class _Classifier:
             scoredict (dict): {'fuzzy':['name','street'],'token':['name_wostopwords'],'acronym':None}
         """
         self.threshold = 0.5
-        self.scores = self._config_init(**kwargs)
+        self.scores = self._config_init(*args,**kwargs)
         assert isinstance(self.scores, set)
         pass
 
@@ -193,7 +193,7 @@ class SparkClassifier:
         return dp['y_proba']
 
 
-class ScikitLearnClassifier:
+class ScikitLearnClassifier(_Classifier):
     """
     The evaluation model is based on machine learning, it is an implementation of the Random Forest algorithm.
     It requires to be fitted on a training table before making decision.
@@ -206,21 +206,25 @@ class ScikitLearnClassifier:
     """
 
     def __init__(self, verbose=True,
-                 n_estimators=2000, model=None):
+                 n_estimators=500, model=None, scores=None):
         """
         Create the model
         Args:
             verbose (bool): control print output
             n_estimators (int): number of estimators for the Random Forest Algorithm
             model: sklearn classifier model, default RandomForrest
+            scores (list)
         """
         self.verbose = verbose
         if model is None:
             self.model = RandomForestClassifier(n_estimators=n_estimators)
         else:
             self.model = model
-        self.scores = set()
-
+        if scores is None:
+            self.scores = set()
+        else:
+            self.scores = set(scores)
+        self.threshold = 0.5
         pass
 
     def fit(self, X, y):
@@ -276,10 +280,11 @@ class ScikitLearnClassifier:
             pd.Series : the probability vector of the target records being the same as the query
 
         """
-        x_score = x_score.toPandas()
-        if x_score is None or x_score.shape[0] == 0:
+
+        if x_score is None or x_score.count() == 0:
             return None
         else:
+            x_score = x_score.toPandas()
             missing_cols = self.scores.difference(set(x_score.columns))
             if len(missing_cols) > 0:
                 raise KeyError('not all training columns are found in the output of the scorer:', missing_cols)
@@ -337,7 +342,7 @@ class RuleBasedClassifier(_Classifier):
         y_proba = dm.predict_proba(x_score)
     """
 
-    def _config_init(self, scores=None, eval_func=None):
+    def _config_init(self, scores=None, eval_func=None, *args, **kwargs):
         """
         Create the model
         Args:
