@@ -48,9 +48,29 @@ class RecordLinker:
             xarray.DepCol: the probability vector of the target records being the same as the query
 
         """
+
+        scores = self._create_scores(query=query, on_index=on_index)
+
+        y_proba = self.classifier.predict_proba(scores)
+
+        y_proba = y_proba.sort(ascending=False)
+
+        del scores
+
+        return y_proba
+
+    def _create_scores(self, query, on_index=None):
+        """
+
+        Args:
+            query:
+            on_index(pd.Index):
+
+        Returns:
+            xarray.DepArray
+        """
         query = xarray.DepCol(query)
         output = self.connector.search(query, on_index=on_index)
-
         if output is None or output.count() == 0:
             return None
         else:
@@ -61,16 +81,8 @@ class RecordLinker:
             # create table of scores
             scores = self.comparator.compare(query, targets=targets)
             scores = scores.union(relevance)
+            return scores
 
-            # launch prediction
-            y_proba = self.classifier.predict_proba(scores)
-
-            # sort the results
-            y_proba = y_proba.sort(ascending=False)
-
-            del scores
-
-            return y_proba
     def predict(self, query, on_index=None):
         """
 
@@ -125,33 +137,32 @@ class RecordLinker:
             pd.DataFrame
         """
         goodmatches = self.match_index(query=query, on_index=on_index)
-        results = self.connector.fetch(on_index=goodmatches)
-        results = results.toPandas()
-        return results
+        if goodmatches is None:
+            return None
+        else:
+            results = self.connector.fetch(on_index=goodmatches)
+            results = results.toPandas()
+            return results
 
 
-def  create_pandas_linker(source, filterdict, scoredict, scoredict2=None, scores=None, X_train=None, y_train=None):
+def  create_pandas_linker(source, filterdict, scoredict, X_train, y_train):
         """
 
         Args:
             source:
             filterdict:
             scoredict:
-            scoredict2:
             scores:
 
         Returns:
             RecordLinker
         """
         connector = connectors.PandasDF(source=source, attributes=source.columns, scoredict=scoredict, filterdict=filterdict)
-        needed_scores = set(X_train.columns)
-        needed_scores = needed_scores.difference(connector.relevance)
-        needed_scores = functions.ScoreDict.from_cols(scorecols=needed_scores).to_dict()
-        comparator = comparators.PandasComparator(scoredict=needed_scores)
+        needed_scores = set(X_train.columns).difference(connector.relevance)
+        score_dict2 = functions.ScoreDict.from_cols(scorecols=needed_scores).to_dict()
+        comparator = comparators.PandasComparator(scoredict=score_dict2)
         classifier = classifiers.ScikitLearnClassifier(n_estimators=100)
         classifier.fit(X_train, y_train)
-        # classifier = classifiers.RuleBasedClassifier(scores)
-        #
         lk = RecordLinker(connector=connector,
                                  comparator=comparator,
                                  classifier=classifier)
