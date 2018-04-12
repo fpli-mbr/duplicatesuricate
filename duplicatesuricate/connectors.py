@@ -3,14 +3,14 @@ import xarray
 import functions
 
 class _Connector:
-    def __init__(self, source=None, **kwargs):
+    def __init__(self, target=None, **kwargs):
         '''
 
         Args:
-            source:
+            target:
             **kwargs:
         '''
-        self.source = source
+        self.target = target
         self.attributes, self.relevance = self._config_init(**kwargs)
         assert isinstance(self.attributes, set)
         assert isinstance(self.attributes, set)
@@ -44,24 +44,38 @@ class _Connector:
         results = xarray.DepArray(pd.DataFrame(columns=self.output))
 
         return results
-    def fetch(self, on_index):
+    def fetch(self, on_index, on_cols=None):
         """
 
         Args:
             on_index (list):
+            on_cols (list)
 
         Returns:
             xarray.DepArray
         """
-        results = xarray.DepArray(self._fetch(on_index=on_index))
+        if on_cols is None:
+            cols = list(self.attributes)
+        else:
+            cols = on_cols
+        results = xarray.DepArray(self._fetch(on_index=on_index, on_cols=cols))
         assert set(results.columns) == self.attributes
         return results
-    def _fetch(self, on_index):
-        results = xarray.DepArray(pd.DataFrame(columns=self.attributes))
+    def _fetch(self, on_index, on_cols=None):
+        """
+
+        Args:
+            on_index:
+            on_cols (list):
+
+        Returns:
+
+        """
+        results = xarray.DepArray(pd.DataFrame(columns=on_cols))
         return results
 
 class PandasDF(_Connector):
-    def _config_init(self, attributes, filterdict, scoredict, threshold=0.5):
+    def _config_init(self, attributes, filterdict, scoredict, threshold=0.3):
         """
 
         Args:
@@ -95,16 +109,18 @@ class PandasDF(_Connector):
         results2 = self.compare(query=q, on_index=results1.index, return_filtered=return_filtered)
         table = pd.concat([results1.loc[results2.index],results2], axis=1)
         return table
-    def _fetch(self, on_index):
+    def _fetch(self, on_index, on_cols=None):
         """
 
         Args:
             on_index (pd.Index):
+            on_cols (list): None
 
         Returns:
             pd.DataFrame
         """
-        return self.source.loc[on_index, self.attributes]
+        res =  self.target.loc[on_index, on_cols]
+        return res
 
     def all_any(self, query, on_index=None, return_filtered = True):
         """
@@ -127,7 +143,7 @@ class PandasDF(_Connector):
 
         # Tackle the case where no index is given: use the whole index available
         if on_index is None:
-            on_index = self.source.index
+            on_index = self.target.index
 
         table = pd.DataFrame(index=on_index)
 
@@ -142,7 +158,7 @@ class PandasDF(_Connector):
         if match_all_cols is None and match_any_cols is None:
             return table
 
-        df = self.source.loc[on_index]
+        df = self.target.loc[on_index]
 
         # perform the "any criterias match" logic
         if match_any_cols is not None:
@@ -182,7 +198,7 @@ class PandasDF(_Connector):
 
         assert isinstance(table, pd.DataFrame)
 
-        table = pd.concat([self.source.loc[out_index, self.attributes],
+        table = pd.concat([self.target.loc[out_index, self.attributes],
                            table], axis =1)
         return table
 
@@ -197,7 +213,7 @@ class PandasDF(_Connector):
         Returns:
             pd.DataFrame
         """
-        targets =self.source.loc[on_index]
+        targets =self.target.loc[on_index]
         table = functions.build_similarity_table(query=query,targets=targets,scoredict=self.scoredict)
         if return_filtered:
             results = table.apply(lambda r: any(r > self.threshold), axis=1)

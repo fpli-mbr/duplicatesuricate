@@ -3,16 +3,18 @@ import pandas as pd
 import numpy as np
 import functions
 import linker
+import retrain
 
 
 class Suricate:
-    def __init__(self, input_records, rlinker, verbose=True):
+    def __init__(self, input_records, rlinker, verbose=True, display=None):
         """
         Main class used for deduplication
         Args:
             input_records (pd.DataFrame): Input table for record linkage, records to link
             rlinker (linker.RecordLinker)
             verbose (bool): Turns on or off prints
+            display (list): list of columns
         """
 
         self.input_records = input_records
@@ -25,6 +27,11 @@ class Suricate:
         self.idcol = 'gid'
 
         self._results = {}
+
+        if display is None:
+            self.display = self.linker.connector.attributes
+        else:
+            self.display = set(display)
         pass
 
     def _generate_query_index_(self, in_index=None):
@@ -134,8 +141,10 @@ class Suricate:
         # Melt the results dictionnary to have the form:
         # df.columns = ['ix_source','ix_target'] if with_proba is false, ['ix_source','ix_target','y_proba' otherwise]
         results = self.unpack_results(self._results, with_proba=with_proba)
-
+        results = retrain.unique_pairs(y_source=results['ix_source'],
+                                       y_target=results['ix_targets'])
         return results
+
     def get_target(self, on_index, on_cols=None):
         results = self.linker.connector.fetch(on_index=on_index).toPandas()
         if on_cols is None:
@@ -347,3 +356,10 @@ class Suricate:
         combined_table = visual_table.join(scored_table, rsuffix='_fromscoretable', how='left')
         return combined_table
 
+def create_pandas_suricate(source, target, filterdict, scoredict, X_train, y_train, n_estimators=500):
+    lk = linker.create_pandas_linker(target=target,
+                                     filterdict=filterdict,
+                                     scoredict=scoredict,
+                                     X_train=X_train, y_train=y_train, n_estimators=n_estimators)
+    sur = Suricate(input_records=source, rlinker=lk)
+    return sur

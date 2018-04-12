@@ -148,11 +148,11 @@ class RecordLinker:
             return results
 
 
-def create_pandas_linker(source, filterdict, scoredict, X_train, y_train):
+def create_pandas_linker(target, filterdict, scoredict, X_train, y_train, *args, **kwargs):
     """
 
         Args:
-            source:
+            target:
             filterdict:
             scoredict:
             scores:
@@ -160,13 +160,13 @@ def create_pandas_linker(source, filterdict, scoredict, X_train, y_train):
         Returns:
             RecordLinker
         """
-    connector = connectors.PandasDF(source=source, attributes=source.columns, scoredict=scoredict,
+    connector = connectors.PandasDF(target=target, attributes=target.columns, scoredict=scoredict,
                                     filterdict=filterdict)
     needed_scores = set(X_train.columns).difference(connector.relevance)
     score_dict2 = functions.ScoreDict.from_cols(scorecols=needed_scores).to_dict()
     comparator = comparators.PandasComparator(scoredict=score_dict2)
-    classifier = classifiers.ScikitLearnClassifier(n_estimators=100)
-    classifier.fit(X_train, y_train)
+    n_estimators = kwargs.get('n_estimators')
+    classifier = classifiers.ScikitLearnClassifier.from_table(X_train=X_train,y_train=y_train, n_estimators=n_estimators)
     lk = RecordLinker(connector=connector,
                       comparator=comparator,
                       classifier=classifier)
