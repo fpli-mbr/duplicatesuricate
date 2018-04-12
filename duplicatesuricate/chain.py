@@ -255,11 +255,11 @@ class Suricate:
             pd.DataFrame index=['ix_source','ix_target'],colums=[scores....,'y_true','y_proba']
         """
         #TODO: Rewrite
-        training_table_complete = pd.DataFrame(columns=self.linker.score_cols)
+        training_table_complete = pd.DataFrame(columns=self.linker.classifier.scores)
         for t, u in zip(inputs, targets):
-            similarity_vector = self.linker.scoringmodel.build_similarity_table(query=self.input_records.loc[t],
-                                                                                on_index=pd.Index([u]),
-                                                                                scoredict=scoredict)
+            query = self.input_records[t]
+            target = self.get_target(on_index=pd.Index([u]))
+            similarity_vector = functions.build_similarity_table(query=query, targets=target, scoredict=scoredict)
             similarity_vector['ix_source'] = t
             similarity_vector['ix_target'] = u
             training_table_complete = pd.concat([training_table_complete, similarity_vector], ignore_index=True, axis=0)
@@ -269,7 +269,7 @@ class Suricate:
 
         # calculate the probability vector
         if with_proba:
-            X_train = training_table_complete[self.linker.score_cols]
+            X_train = training_table_complete[self.linker.classifier.scores]
             y_proba = self.linker.classifier.predict_proba(X_train)
             training_table_complete['y_proba'] = y_proba
         if y_true is not None:
