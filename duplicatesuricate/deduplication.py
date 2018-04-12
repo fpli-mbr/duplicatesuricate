@@ -830,7 +830,6 @@ class RecordLinker:
                                    _acronym_udf(ds[c + '_source'],
                                                 ds[c + '_target']))
 
-        ## TODO: add attributes
         # think how to initialize form pandas dataframe and then transform it as float
         # attributescols=self.scoredict.get('attributes')
         # if attributescols is not None:

@@ -28,7 +28,7 @@ class DepArray:
         Returns:
 
         """
-        #TODO: Docstring
+        #TODO: Docstring: return type spark df
         if self.struct == 'pandas':
             return sqlContext.createDataFrame(self.df)
         else:
@@ -119,8 +119,8 @@ class DepCol:
         if self.struct == 'pandas':
             return self.y
         else:
-            #TODO
+            #TODO: complete with pyspark logic
             return pd.Series(self.y)
     def toSpark(self):
-        #TODO
+        #TODO: complete with pyspark logic
         return None
