@@ -34,28 +34,6 @@ class Suricate:
             self.display = set(display)
         pass
 
-    def _generate_query_index_(self, in_index=None):
-        """
-        this function returns a random index from the input records with no group id to start the linkage process
-        Args:
-            in_index (pd.Index): index or list, default None the query should be in the selected index
-
-        Returns:
-            object: an index of the input records
-        """
-
-        if in_index is None:
-            in_index = self.input_records.index
-
-        x = self.input_records.loc[in_index]
-        possiblechoices = x.loc[(x[self.idcol] == 0) | (x[self.idcol].isnull())].index
-        if possiblechoices.shape[0] == 0:
-            del x
-            return None
-        else:
-            a = np.random.choice(possiblechoices)
-            del x, possiblechoices
-            return a
 
     def _find_matches_(self, query_index, n_matches_max=1):
         """
@@ -355,6 +333,127 @@ class Suricate:
                                                  y_true=y_true)
         combined_table = visual_table.join(scored_table, rsuffix='_fromscoretable', how='left')
         return combined_table
+
+
+class Clustricate(Suricate):
+    @classmethod
+    def from_files(cls, data, filterdict, scoredict, X_train, y_train, n_estimators=10, idcol='gid'):
+        """
+
+        Args:
+            data (pd.DataFrame):
+            filterdict:
+            scoredict:
+            X_train:
+            y_train:
+            n_estimators:
+            idcol:
+
+        Returns:
+
+        """
+
+        if idcol not in data.columns:
+            data[idcol] = None
+
+        lk = linker.create_pandas_linker(target=data,
+                                         filterdict=filterdict,
+                                         scoredict=scoredict,
+                                         X_train=X_train, y_train=y_train, n_estimators=n_estimators)
+        sur = Clustricate(input_records=data, rlinker=lk)
+        sur.idcol = idcol
+        return sur
+
+    def _generate_query_index_(self, in_index=None):
+        """
+        this function returns a random index from the input records with no group id to start the linkage process
+        Args:
+            in_index (pd.Index): index or list, default None the query should be in the selected index
+
+        Returns:
+            object: an index of the input records
+        """
+
+        if in_index is None:
+            in_index = self.input_records.index
+
+        x = self.input_records.loc[in_index]
+        possiblechoices = x.loc[(x[self.idcol] == 0) | (x[self.idcol].isnull())].index
+        if possiblechoices.shape[0] == 0:
+            del x
+            return None
+        else:
+            a = np.random.choice(possiblechoices)
+            del x, possiblechoices
+            return a
+
+    def find_duplicates(self, n_runs=5):
+        self._find_duplicates(n_runs=n_runs)
+        return None
+
+    def _find_duplicates(self, n_runs=5):
+        print('starting deduplication at {}'.format(pd.datetime.now()))
+        for i in range(n_runs):
+            time_start = pd.datetime.now()
+            print('starting deduplication for {} of {}'.format(i+1, n_runs))
+            new_query = self._generate_query_index_()
+            if new_query is None:
+                print('ending deduplication')
+                break
+            self._update_gid_query(query=new_query)
+            # timing
+            time_end = pd.datetime.now()
+            duration = (time_end - time_start).total_seconds()
+
+            if self.verbose:
+                print(
+                    '{} of {} inputs records deduplicated || time elapsed {} s'.format(
+                        i + 1, n_runs, duration))
+        print('done')
+    def _update_gid_query(self, query):
+        """
+        update the self.idcol column with a new group id (gid)
+        Args:
+            query (object): part of the query_index
+
+        Returns:
+            None
+        """
+        goodmatches_index = self._find_matches_(query_index=query)
+        if goodmatches_index is None:
+            self.input_records.loc[query, self.idcol]=self.create_gid(query)
+        else:
+            gids = self.input_records.loc[goodmatches_index, self.idcol]
+            assert isinstance(gids, pd.Series)
+            gids = gids.dropna()
+            if gids.shape[0] == 0:
+                gid = self.create_gid(query)
+            else:
+                gid = gids.value_counts().index[0]
+            self.input_records.loc[query, self.idcol] = gid
+            y = self.input_records.loc[goodmatches_index, self.idcol]
+            unmatched_index = y.loc[y.isnull()].index
+            self.input_records.loc[unmatched_index, self.idcol] = gid
+        return None
+
+    def create_gid(self, query):
+        from hashlib import sha1
+        encoding = 'utf-8'
+        s = str(query)
+        hashedid = sha1(s.encode(encoding,'ignore')).hexdigest()
+        hashedid='-'.join([hashedid[:5], hashedid[5:10], hashedid[10:15], hashedid[15:20]])
+        # hashedid = hashedid.encode(encoding, 'ignore').decode(encoding)
+        # hashedid = str(hashedid)
+        return hashedid
+    def show_group(self, gid=None, index=None):
+        if gid is None and index is None:
+            return None
+        if index is not None:
+            mygid = self.input_records.loc[index,self.idcol]
+        else:
+            mygid = gid
+        res = self.input_records.loc[self.input_records[self.idcol]==mygid]
+        return res
 
 def create_pandas_suricate(source, target, filterdict, scoredict, X_train, y_train, n_estimators=500):
     lk = linker.create_pandas_linker(target=target,
