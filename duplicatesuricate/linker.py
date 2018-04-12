@@ -1,9 +1,9 @@
-import connectors
-import classifiers
-import comparators
-import xarray
+from . import connectors
+from . import classifiers
+from . import comparators
+from . import xarray
 import pandas as pd
-import functions
+from . import functions
 
 
 class RecordLinker:

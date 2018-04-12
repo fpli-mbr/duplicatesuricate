@@ -1,6 +1,6 @@
 import pandas as pd
-import xarray
-import functions
+from . import xarray
+from . import functions
 
 # noinspection PySetFunctionToLiteral,PySetFunctionToLiteral
 class _Comparator:
