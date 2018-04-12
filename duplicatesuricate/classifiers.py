@@ -53,6 +53,7 @@ class _Classifier:
         Returns:
             xarray.DepCol
         """
+        X = X.fillna(0)
         y_proba = self._predict_proba(X)
         y_proba = xarray.DepCol(y_proba)
         return y_proba

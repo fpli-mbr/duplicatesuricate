@@ -33,6 +33,9 @@ class DepArray:
             return sqlContext.createDataFrame(self.df)
         else:
             return self.df
+    def fillna(self, na_value):
+        self.df = self.df.fillna(na_value)
+        return self
     def select(self, cols):
         '''
 

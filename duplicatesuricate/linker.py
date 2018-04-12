@@ -5,6 +5,7 @@ import xarray
 import pandas as pd
 import functions
 
+
 class RecordLinker:
     def __init__(self, connector, comparator, classifier):
         '''
@@ -50,7 +51,8 @@ class RecordLinker:
         """
 
         scores = self._create_scores(query=query, on_index=on_index)
-
+        if scores is None:
+            print('Score none for query={}, on_index=')
         y_proba = self.classifier.predict_proba(scores)
 
         y_proba = y_proba.sort(ascending=False)
@@ -69,6 +71,7 @@ class RecordLinker:
         Returns:
             xarray.DepArray
         """
+        # TODO: check behavior of on_index
         query = xarray.DepCol(query)
         output = self.connector.search(query, on_index=on_index)
         if output is None or output.count() == 0:
@@ -113,7 +116,7 @@ class RecordLinker:
         """
         if n_matches_max is None:
             n_matches_max = 1
-        y_bool =self.predict(query=query, on_index=on_index)
+        y_bool = self.predict(query=query, on_index=on_index)
         if y_bool is None:
             return None
         else:
@@ -145,8 +148,8 @@ class RecordLinker:
             return results
 
 
-def  create_pandas_linker(source, filterdict, scoredict, X_train, y_train):
-        """
+def create_pandas_linker(source, filterdict, scoredict, X_train, y_train):
+    """
 
         Args:
             source:
@@ -157,13 +160,14 @@ def  create_pandas_linker(source, filterdict, scoredict, X_train, y_train):
         Returns:
             RecordLinker
         """
-        connector = connectors.PandasDF(source=source, attributes=source.columns, scoredict=scoredict, filterdict=filterdict)
-        needed_scores = set(X_train.columns).difference(connector.relevance)
-        score_dict2 = functions.ScoreDict.from_cols(scorecols=needed_scores).to_dict()
-        comparator = comparators.PandasComparator(scoredict=score_dict2)
-        classifier = classifiers.ScikitLearnClassifier(n_estimators=100)
-        classifier.fit(X_train, y_train)
-        lk = RecordLinker(connector=connector,
-                                 comparator=comparator,
-                                 classifier=classifier)
-        return lk
+    connector = connectors.PandasDF(source=source, attributes=source.columns, scoredict=scoredict,
+                                    filterdict=filterdict)
+    needed_scores = set(X_train.columns).difference(connector.relevance)
+    score_dict2 = functions.ScoreDict.from_cols(scorecols=needed_scores).to_dict()
+    comparator = comparators.PandasComparator(scoredict=score_dict2)
+    classifier = classifiers.ScikitLearnClassifier(n_estimators=100)
+    classifier.fit(X_train, y_train)
+    lk = RecordLinker(connector=connector,
+                      comparator=comparator,
+                      classifier=classifier)
+    return lk

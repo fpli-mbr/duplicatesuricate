@@ -128,9 +128,8 @@ class Suricate:
         else:
             # return proba
             # TODO: write func
+            raise ModuleNotFoundError('function not defined yet')
 
-
-            print('finished work at {}'.format(pd.datetime.now()))
 
         # Melt the results dictionnary to have the form:
         # df.columns = ['ix_source','ix_target'] if with_proba is false, ['ix_source','ix_target','y_proba' otherwise]
@@ -141,9 +140,13 @@ class Suricate:
         results = self.linker.connector.fetch(on_index=on_index).toPandas()
         if on_cols is None:
             on_cols = self.linker.connector.attributes
-        elif type(on_cols) == set:
-            on_cols = list(on_cols)
-        results = results[on_cols]
+        if type(on_cols) == set:
+            cols = list(on_cols)
+        elif type(on_cols) == list:
+            cols = on_cols
+        else:
+            cols = list(on_cols)
+        results = results[cols]
         return results
 
 
@@ -166,7 +169,7 @@ class Suricate:
         """
 
         if display is None:
-            display = self.linker.connector.attributes
+            display = list(self.linker.connector.attributes)
         if fuzzy is None:
             fuzzy = []
         if exact is None:
@@ -254,10 +257,12 @@ class Suricate:
         Returns:
             pd.DataFrame index=['ix_source','ix_target'],colums=[scores....,'y_true','y_proba']
         """
-        #TODO: Rewrite
-        training_table_complete = pd.DataFrame(columns=self.linker.classifier.scores)
+
+        training_table_complete = pd.DataFrame(columns=list(self.linker.classifier.scores))
+        if scoredict is None:
+            scoredict = functions.ScoreDict.from_cols(self.linker.classifier.scores).to_dict()
         for t, u in zip(inputs, targets):
-            query = self.input_records[t]
+            query = self.input_records.loc[t]
             target = self.get_target(on_index=pd.Index([u]))
             similarity_vector = functions.build_similarity_table(query=query, targets=target, scoredict=scoredict)
             similarity_vector['ix_source'] = t
@@ -269,8 +274,9 @@ class Suricate:
 
         # calculate the probability vector
         if with_proba:
-            X_train = training_table_complete[self.linker.classifier.scores]
-            y_proba = self.linker.classifier.predict_proba(X_train)
+            X_train = training_table_complete[list(self.linker.classifier.scores)]
+            X_train = xarray.DepArray(X_train)
+            y_proba = self.linker.classifier.predict_proba(X_train).toPandas()
             training_table_complete['y_proba'] = y_proba
         if y_true is not None:
             training_table_complete['y_true'] = y_true
