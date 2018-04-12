@@ -41,6 +41,16 @@ def appair(ix1,ix2):
     return m
 
 def unique_pairs(y_source,y_target,y_true=None):
+    """
+
+    Args:
+        y_source (pd.Series):
+        y_target (pd.Series):
+        y_true (pd.Series):
+
+    Returns:
+        pd.DataFrame
+    """
     y1=np.array(y_source)
     y2=np.array(y_target)
     df=pd.DataFrame(y1)

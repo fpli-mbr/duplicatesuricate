@@ -25,6 +25,7 @@ class _Classifier:
         self.threshold = 0.5
         self.scores = self._config_init(*args,**kwargs)
         assert isinstance(self.scores, set)
+        self.compared = functions.ScoreDict.from_cols(scorecols=self.scores).compared()
         pass
 
     # noinspection PySetFunctionToLiteral
@@ -206,28 +207,29 @@ class ScikitLearnClassifier(_Classifier):
         y_proba = dm.predict_proba(x_score)
     """
 
-    def __init__(self, verbose=True,
-                 n_estimators=500, model=None, scores=None):
-        """
-        Create the model
-        Args:
-            verbose (bool): control print output
-            n_estimators (int): number of estimators for the Random Forest Algorithm
-            model: sklearn classifier model, default RandomForrest
-            scores (list)
-        """
+    def _config_init(self, *args,**kwargs):
+        verbose = kwargs.get('verbose')
+        if verbose is None:
+            verbose = True
         self.verbose = verbose
+
+        n_estimators = kwargs.get('n_estimators')
+        if n_estimators is None:
+            n_estimators = 500
+
+        model = kwargs.get('model')
         if model is None:
             self.model = RandomForestClassifier(n_estimators=n_estimators)
         else:
             self.model = model
+
+        scores = kwargs.get('scores')
         if scores is None:
             self.scores = set()
         else:
             self.scores = set(scores)
-        self.compared = functions.ScoreDict.from_cols(scorecols=self.scores).compared()
-        self.threshold = 0.5
-        pass
+        return self.scores
+
 
     def fit(self, X, y):
         """
