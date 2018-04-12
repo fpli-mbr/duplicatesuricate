@@ -6,13 +6,14 @@ import linker
 
 
 class Suricate:
-    def __init__(self, input_records, rlinker, verbose=True):
+    def __init__(self, input_records, rlinker, verbose=True, display=None):
         """
         Main class used for deduplication
         Args:
             input_records (pd.DataFrame): Input table for record linkage, records to link
             rlinker (linker.RecordLinker)
             verbose (bool): Turns on or off prints
+            display (list): list of columns
         """
 
         self.input_records = input_records
@@ -25,6 +26,11 @@ class Suricate:
         self.idcol = 'gid'
 
         self._results = {}
+
+        if display is None:
+            self.display = self.linker.connector.attributes
+        else:
+            self.display = set(display)
         pass
 
     def _generate_query_index_(self, in_index=None):
@@ -347,3 +353,5 @@ class Suricate:
         combined_table = visual_table.join(scored_table, rsuffix='_fromscoretable', how='left')
         return combined_table
 
+def create_pandas_suricate(source, target, filterdict, scoredict, X_train, y_train):
+    lk = linker.create_pandas_linker(source=target)
