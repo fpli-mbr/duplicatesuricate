@@ -1,5 +1,5 @@
-import xarray
-import functions
+from . import xarray
+from . import functions
 import numpy as np
 import pandas as pd
 from pyspark.ml import Pipeline
@@ -9,8 +9,6 @@ from pyspark.sql.functions import udf
 from pyspark.sql.types import FloatType
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
-
-from functions import _transform_pandas_spark
 
 
 class _Classifier:
@@ -115,7 +113,7 @@ class SparkClassifier:
         X['y_train'] = y
         X['y_train'] = X['y_train'].astype(int)
 
-        Xs = _transform_pandas_spark(self.sqlContext, df=X, drop_index=True)
+        Xs = functions._transform_pandas_spark(self.sqlContext, df=X, drop_index=True)
 
         # Create the pipeline
 
@@ -184,7 +182,7 @@ class SparkClassifier:
                     index_col = X.index.name
             else:
                 drop_index = True
-            X = _transform_pandas_spark(sqlContext=self.sqlContext, df=X, drop_index=drop_index)
+            X = functions._transform_pandas_spark(sqlContext=self.sqlContext, df=X, drop_index=drop_index)
 
         x_pred = self._predict(X)
         if index_col in x_pred.schema.names:

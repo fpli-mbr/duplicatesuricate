@@ -1,9 +1,9 @@
-import xarray
 import pandas as pd
 import numpy as np
-import functions
-import linker
-import retrain
+from . import xarray
+from . import functions
+from . import linker
+from . import retrain
 
 
 class Suricate:
