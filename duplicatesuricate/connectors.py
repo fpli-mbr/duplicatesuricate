@@ -119,7 +119,7 @@ class PandasDF(_Connector):
         Returns:
             pd.DataFrame
         """
-        res =  self.target.loc[on_index, cols]
+        res =  self.target.loc[on_index, on_cols]
         return res
 
     def all_any(self, query, on_index=None, return_filtered = True):

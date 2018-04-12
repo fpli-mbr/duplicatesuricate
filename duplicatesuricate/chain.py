@@ -354,4 +354,6 @@ class Suricate:
         return combined_table
 
 def create_pandas_suricate(source, target, filterdict, scoredict, X_train, y_train):
-    lk = linker.create_pandas_linker(source=target)
+    lk = linker.create_pandas_linker(target=target, filterdict=filterdict, scoredict=scoredict, X_train=X_train, y_train=y_train)
+    sur = Suricate(input_records=source, rlinker=lk)
+    return sur
