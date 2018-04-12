@@ -61,7 +61,7 @@ class _Connector:
         return results
 
 class PandasDF(_Connector):
-    def _config_init(self, attributes, filterdict, scoredict, threshold=0.5):
+    def _config_init(self, attributes, filterdict, scoredict, threshold=0.3):
         """
 
         Args:
