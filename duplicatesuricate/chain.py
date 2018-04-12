@@ -137,6 +137,15 @@ class Suricate:
         results = self.unpack_results(self._results, with_proba=with_proba)
 
         return results
+    def get_target(self, on_index, on_cols=None):
+        results = self.linker.connector.fetch(on_index=on_index).toPandas()
+        if on_cols is None:
+            on_cols = self.linker.connector.attributes
+        elif type(on_cols) == set:
+            on_cols = list(on_cols)
+        results = results[on_cols]
+        return results
+
 
     def build_visualcomparison_table(self, inputs, targets, display=None, fuzzy=None, exact=None, y_true=None,
                                      y_proba=None):
@@ -157,7 +166,7 @@ class Suricate:
         """
 
         if display is None:
-            display = self.linker.compared_cols
+            display = self.linker.connector.attributes
         if fuzzy is None:
             fuzzy = []
         if exact is None:
@@ -174,7 +183,7 @@ class Suricate:
         res['ix_source'] = inputs
 
         # take all values from target records
-        x = self.target_records.loc[targets, allcols].copy()
+        x = self.get_target(on_index=targets, on_cols=allcols)
         x.columns = [c + '_target' for c in allcols]
         x.index.name = 'ix_target'
         res['ix_target'] = targets
@@ -198,7 +207,7 @@ class Suricate:
             df_fuzzy = pd.DataFrame(index=res.index)
             for c in fuzzy:
                 df_fuzzy[c + '_fuzzyscore'] = res.apply(
-                    lambda r: fuzzyscore(r[c + '_source'], r[c + '_target']), axis=1)
+                    lambda r: functions.fuzzyscore(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
             if len(fuzzy) > 1:
                 df_fuzzy['avg_fuzzyscore'] = df_fuzzy.fillna(0).mean(axis=1)
@@ -208,7 +217,7 @@ class Suricate:
             df_exact = pd.DataFrame(index=res.index)
             for c in exact:
                 df_exact[c + '_exactscore'] = res.apply(
-                    lambda r: exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
+                    lambda r: functions.exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
             if len(exact) > 1:
                 df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
@@ -245,7 +254,7 @@ class Suricate:
         Returns:
             pd.DataFrame index=['ix_source','ix_target'],colums=[scores....,'y_true','y_proba']
         """
-
+        #TODO: Rewrite
         training_table_complete = pd.DataFrame(columns=self.linker.score_cols)
         for t, u in zip(inputs, targets):
             similarity_vector = self.linker.scoringmodel.build_similarity_table(query=self.input_records.loc[t],
