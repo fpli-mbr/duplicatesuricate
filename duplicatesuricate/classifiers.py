@@ -225,6 +225,7 @@ class ScikitLearnClassifier(_Classifier):
             self.scores = set()
         else:
             self.scores = set(scores)
+        self.compared = functions.ScoreDict.from_cols(scorecols=self.scores).compared()
         self.threshold = 0.5
         pass
 
@@ -298,6 +299,20 @@ class ScikitLearnClassifier(_Classifier):
                 pd.DataFrame(self.model.predict_proba(x_score), index=x_score.index)[1]
             assert isinstance(y_proba, pd.Series)
             return y_proba
+    @classmethod
+    def from_table(self, X_train, y_train, n_estimators):
+        """
+
+        Args:
+            X_train (pd.DataFrame):
+            y_train (pd.Series):
+
+        Returns:
+            ScikitLearnClassifier
+        """
+        model = ScikitLearnClassifier(scores=X_train.columns, n_estimators=n_estimators)
+        model.fit(X_train, y_train)
+        return model
 
 
 class DummyClassifier(_Classifier):

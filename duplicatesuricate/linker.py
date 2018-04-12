@@ -165,8 +165,7 @@ def create_pandas_linker(source, filterdict, scoredict, X_train, y_train):
     needed_scores = set(X_train.columns).difference(connector.relevance)
     score_dict2 = functions.ScoreDict.from_cols(scorecols=needed_scores).to_dict()
     comparator = comparators.PandasComparator(scoredict=score_dict2)
-    classifier = classifiers.ScikitLearnClassifier(n_estimators=100)
-    classifier.fit(X_train, y_train)
+    classifier = classifiers.ScikitLearnClassifier.from_table(X_train=X_train,y_train=y_train, n_estimators=500)
     lk = RecordLinker(connector=connector,
                       comparator=comparator,
                       classifier=classifier)
