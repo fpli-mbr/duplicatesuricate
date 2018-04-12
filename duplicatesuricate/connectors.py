@@ -107,6 +107,8 @@ class PandasDF(_Connector):
         q = query.toPandas()
         results1 = self.all_any(query=q, on_index=on_index, return_filtered=return_filtered)
         results2 = self.compare(query=q, on_index=results1.index, return_filtered=return_filtered)
+        uniquecols = list(filter(lambda x: x not in results1.columns, results2.columns))
+        results2 = results2[uniquecols]
         table = pd.concat([results1.loc[results2.index],results2], axis=1)
         return table
     def _fetch(self, on_index, on_cols=None):
