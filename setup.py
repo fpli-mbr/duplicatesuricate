@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='duplicatesuricate',
-      version='0.4.3',
+      version='0.4.4',
       description='Entity resolution algorithm implemented with scikit-learn',
       author='Amber Ocelot',
       author_email='AmberOcelot@gmail.com',
@@ -18,5 +18,5 @@ setup(name='duplicatesuricate',
           'Intended Audience :: Developers',
           'Topic :: Utilities'
       ],
-      install_requires=['neatmartinet', 'pandas', 'numpy', 'fuzzywuzzy','scikit-learn','pyspark']
+      install_requires=['pandas', 'numpy', 'fuzzywuzzy','scikit-learn','pyspark']
       )

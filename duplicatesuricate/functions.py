@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 from fuzzywuzzy.fuzz import ratio, token_set_ratio
 from pyspark.sql.functions import udf
-from pyspark.sql.types import FloatType
+from pyspark.sql.types import FloatType, StructField, StructType, StringType, BooleanType, IntegerType
+
 
 class ScoreDict(dict):
     def _unpack(self):
@@ -293,3 +294,58 @@ def _compare(query, targets, on_cols, func, suffix):
         else:
             table[colname] = targets[c].apply(lambda r: func(r, query[c]))
     return table
+
+
+_sparktypedict = dict()
+_sparktypedict[np.dtype('O')] = StringType()
+_sparktypedict[np.dtype('int64')] = IntegerType()
+_sparktypedict[np.dtype('float64')] = FloatType()
+_sparktypedict[np.dtype('bool')] = BooleanType()
+
+_sparktypedict[str] = StringType()
+_sparktypedict[int] = IntegerType()
+_sparktypedict[float] = FloatType()
+_sparktypedict[bool] = BooleanType()
+
+
+# Thank you
+
+
+def _transform_pandas_spark(sqlContext, df, drop_index=False):
+    """
+    Takes a pandas DataFrame as an entry. Convert it to a Spark DF, using the pandas Schema and index
+    Args:
+        sqlContext (pyspark.sql.context.SQLContext)
+        df (pd.DataFrame):
+        drop_index (bool): if True, the index will not be saved. If False, the index will be a separate column
+
+    Returns:
+        pyspark.sql.dataframe.DataFrame
+    """
+    schema = []
+
+    if drop_index is False:
+        # add index column to the schema
+        mytype = _sparktypedict[df.index.dtype]
+        name = df.index.name
+        if name is None:
+            name = 'index'
+        schema.append(StructField(name=name, dataType=mytype, nullable=False))
+
+    # add compared_columns to the schema
+    for c in df.columns.tolist():
+        mytype = _sparktypedict[df[c].dtype]
+        mycol = StructField(name=c, dataType=mytype, nullable=True)
+        schema.append(mycol)
+    # create schema
+    schema = StructType(schema)
+
+    if drop_index is False:
+        # add index to the dataframe
+        x = df.reset_index(drop=False)
+    else:
+        x = df
+
+    # create dataframe
+    ds = sqlContext.createDataFrame(x, schema=schema)
+    return ds

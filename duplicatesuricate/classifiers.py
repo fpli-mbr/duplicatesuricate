@@ -10,7 +10,7 @@ from pyspark.sql.types import FloatType
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
 
-from deduplication import _transform_pandas_spark
+from functions import _transform_pandas_spark
 
 
 class _Classifier:
