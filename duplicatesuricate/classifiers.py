@@ -1,5 +1,5 @@
 from . import xarray
-from . import functions
+from . import utils
 import numpy as np
 import pandas as pd
 from pyspark.ml import Pipeline
@@ -23,7 +23,7 @@ class _Classifier:
         self.threshold = 0.5
         self.scores = self._config_init(*args,**kwargs)
         assert isinstance(self.scores, set)
-        self.compared = functions.ScoreDict.from_cols(scorecols=self.scores).compared()
+        self.compared = utils.ScoreDict.from_cols(scorecols=self.scores).compared()
         pass
 
     # noinspection PySetFunctionToLiteral
@@ -113,7 +113,7 @@ class SparkClassifier:
         X['y_train'] = y
         X['y_train'] = X['y_train'].astype(int)
 
-        Xs = functions._transform_pandas_spark(self.sqlContext, df=X, drop_index=True)
+        Xs = utils._transform_pandas_spark(self.sqlContext, df=X, drop_index=True)
 
         # Create the pipeline
 
@@ -182,7 +182,7 @@ class SparkClassifier:
                     index_col = X.index.name
             else:
                 drop_index = True
-            X = functions._transform_pandas_spark(sqlContext=self.sqlContext, df=X, drop_index=drop_index)
+            X = utils._transform_pandas_spark(sqlContext=self.sqlContext, df=X, drop_index=drop_index)
 
         x_pred = self._predict(X)
         if index_col in x_pred.schema.names:
@@ -327,9 +327,9 @@ class DummyClassifier(_Classifier):
 
         pass
         if scoredict is None:
-            self.scoredict = functions.ScoreDict(dict())
+            self.scoredict = utils.ScoreDict(dict())
         else:
-            self.scoredict = functions.ScoreDict(scoredict)
+            self.scoredict = utils.ScoreDict(scoredict)
         self.scores = self.scoredict.scores()
         return self.scores
 
@@ -367,7 +367,7 @@ class RuleBasedClassifier(_Classifier):
         """
         if eval_func is None:
             self.eval_func = lambda r: sum(r) / len(r)
-        self.scoredict = functions.ScoreDict.from_cols(scores)
+        self.scoredict = utils.ScoreDict.from_cols(scores)
         self.compared = self.scoredict.compared()
         self.scores = self.scoredict.scores()
         return self.scores
@@ -389,7 +389,7 @@ class RuleBasedClassifier(_Classifier):
                         'exact':'id'
                         'acronym':'name'}
         """
-        scoredict = functions.ScoreDict(scoredict)
+        scoredict = utils.ScoreDict(scoredict)
         scores = scoredict.scores()
         x = RuleBasedClassifier(scores=scores, eval_func=evalfunc)
         return x

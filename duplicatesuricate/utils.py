@@ -4,6 +4,8 @@ from fuzzywuzzy.fuzz import ratio, token_set_ratio
 from pyspark.sql.functions import udf
 from pyspark.sql.types import FloatType, StructField, StructType, StringType, BooleanType, IntegerType
 
+from pyspark.sql import functions as F
+from pyspark.sql import types as T
 
 class ScoreDict(dict):
     def _unpack(self):
@@ -113,6 +115,74 @@ def fuzzyscore(a, b):
 
 _fuzzy_udf = udf(lambda a, b: fuzzyscore(a, b), FloatType())
 
+def fuzzyspark(df, on, value):
+    q_val = value
+    df = df.select([on])
+    # TODO: Rework that part
+    df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
+    df = df.withColumn('len', F.min(F.length(on), F.lit(len(q_val)).cast(T.IntegerType())))
+    df = df.withColumn('levenshtein', F.levenshtein(on, 'query'))
+    df = df.withColumn('score', F.col('levenshtein') / F.col('len'))
+    df = df.select(['score'])
+    return df
+
+def token_score(df, on, value):
+    q_val = value
+    df = df.select([on])
+    df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
+    # TODO: implement the pattent
+    pattern = ','
+    df = df.withColumn('tokens1', F.split(F.col('left'), pattern))
+    df = df.withColumn('tokens2', F.split(F.col('right'), pattern))
+    # intersection = tokens1.intersection(tokens2)
+    # diff1to2 = tokens1.difference(tokens2) = pure token 1
+    # diff2to1 = tokens2.difference(tokens1) = pure token 2
+    # TODO: implement an intersect and a diff method
+    df = df.withColumn('intersection', F.intersect('tokens1', 'tokens2'))
+    df = df.withColumn('diff1to2', F.diff('tokens1', 'tokens2'))
+    df = df.withColumn('diff2to1', F.diff('tokens2', 'tokens1'))
+    # sorted_sect = " ".join(sorted(intersection))
+    # sorted_1to2 = " ".join(sorted(diff1to2))
+    # sorted_2to1 = " ".join(sorted(diff2to1))
+    # TODO: implement a concat for an array
+    df = df.withColumn('sorted_sect', F.concat_ws(' ', F.sort_array('intersection')))
+    df = df.withColumn('sorted_1to2 ', F.concat_ws(' ', F.sort_array('diff1to2')))
+    df = df.withColumn('sorted_2to1', F.concat_ws(' ', F.sort_array('diff2to1')))
+    # combined_1to2 = sorted_sect + " " + sorted_1to2 = chain 1 that has been sorted
+    # combined_2to1 = sorted_sect + " " + sorted_2to1 = chain 2 that has been sorted
+    # TODO: no, i'm joking
+    df = df.withColumn('combined_1to2', F.concat_ws(' ', ['sorted_sect', 'sorted_1to2']))
+    df = df.withColumn('combined_1to2', F.concat_ws(' ', ['sorted_sect', 'sorted_2to1']))
+    # strip
+    # sorted_sect = sorted_sect.strip()
+    # combined_1to2 = combined_1to2.strip()
+    # combined_2to1 = combined_2to1.strip()
+    for c in ['sorted_sect', 'combined_1to2', 'combined_2to1']:
+        df = df.withColumn(c, F.trim(c))
+    # TODO: create a function spark_ratio
+    df = df.withColumn('ratio1', spark_ratio(F.col('sorted_sect', F.col('combined_1to2'))))
+    df = df.withColumn('ratio2', spark_ratio(F.col('sorted_sect', F.col('combined_2to1'))))
+    df = df.withColumn('ratio3', spark_ratio(F.col('combined_2to1', F.col('combined_1to2'))))
+    # pairwise = [
+    #     ratio_func(sorted_sect, combined_1to2),
+    #     ratio_func(sorted_sect, combined_2to1),
+    #     ratio_func(combined_1to2, combined_2to1)
+    # ]
+    df = df.withColumn('max_ratio', F.max(['ratio1', 'ratio2', 'ratio3']))
+    df = df.withColumnRenamed('max_ratio', 'token_fuzzy')
+    df = df.select(['token_fuzzy'])
+    return df
+
+def spark_ratio(left, right):
+    # TODO: sparkify this function
+    df = df(['left', 'right'])
+    df = df.withColumn('len', F.min(F.length('left'), F.length('right')))
+    df = df.withColumn('levenshtein', F.levenshtein('left', 'right'))
+    df = df.withColumn('inv_edit_distance', F.col('len') - F.col('levenshtein'))
+    df = df.withColumn('ratio', F.col('inv_edit_distance') / F.col('len'))
+    df = df.withColumnRenamed('ratio', 'fuzzy')
+    df = df.select(['fuzzy'])
+    return df
 
 def tokenscore(a, b):
     """
