@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from . import xarray
-from . import functions
+from . import utils
 from . import linker
 from . import retrain
 
@@ -197,7 +197,7 @@ class Suricate:
             df_fuzzy = pd.DataFrame(index=res.index)
             for c in fuzzy:
                 df_fuzzy[c + '_fuzzyscore'] = res.apply(
-                    lambda r: functions.fuzzyscore(r[c + '_source'], r[c + '_target']), axis=1)
+                    lambda r: utils.fuzzyscore(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
             if len(fuzzy) > 1:
                 df_fuzzy['avg_fuzzyscore'] = df_fuzzy.fillna(0).mean(axis=1)
@@ -207,7 +207,7 @@ class Suricate:
             df_exact = pd.DataFrame(index=res.index)
             for c in exact:
                 df_exact[c + '_exactscore'] = res.apply(
-                    lambda r: functions.exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
+                    lambda r: utils.exactmatch(r[c + '_source'], r[c + '_target']), axis=1)
             # after the loop, take the sum of the exact score (n ids matchings)
             if len(exact) > 1:
                 df_exact['n_exactmatches'] = df_exact.fillna(0).sum(axis=1)
@@ -247,11 +247,11 @@ class Suricate:
 
         training_table_complete = pd.DataFrame(columns=list(self.linker.classifier.scores))
         if scoredict is None:
-            scoredict = functions.ScoreDict.from_cols(self.linker.classifier.scores).to_dict()
+            scoredict = utils.ScoreDict.from_cols(self.linker.classifier.scores).to_dict()
         for t, u in zip(inputs, targets):
             query = self.input_records.loc[t]
             target = self.get_target(on_index=pd.Index([u]))
-            similarity_vector = functions.build_similarity_table(query=query, targets=target, scoredict=scoredict)
+            similarity_vector = utils.build_similarity_table(query=query, targets=target, scoredict=scoredict)
             similarity_vector['ix_source'] = t
             similarity_vector['ix_target'] = u
             training_table_complete = pd.concat([training_table_complete, similarity_vector], ignore_index=True, axis=0)

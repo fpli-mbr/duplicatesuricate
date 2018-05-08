@@ -1,6 +1,7 @@
 import pandas as pd
 from . import xarray
-from . import functions
+from . import utils
+
 
 class _Connector:
     def __init__(self, target=None, **kwargs):
@@ -40,10 +41,12 @@ class _Connector:
 
     def _config_search(self, **kwargs):
         pass
+
     def _search(self, query, on_index=None, **kwargs):
         results = xarray.DepArray(pd.DataFrame(columns=self.output))
 
         return results
+
     def fetch(self, on_index, on_cols=None):
         """
 
@@ -61,6 +64,7 @@ class _Connector:
         results = xarray.DepArray(self._fetch(on_index=on_index, on_cols=cols))
         assert set(results.columns) == self.attributes
         return results
+
     def _fetch(self, on_index, on_cols=None):
         """
 
@@ -74,6 +78,7 @@ class _Connector:
         results = xarray.DepArray(pd.DataFrame(columns=on_cols))
         return results
 
+
 class PandasDF(_Connector):
     def _config_init(self, attributes, filterdict, scoredict, threshold=0.3):
         """
@@ -86,20 +91,20 @@ class PandasDF(_Connector):
         Returns:
             None
         """
-        self.filterdict = functions.ScoreDict(filterdict)
-        self.scoredict = functions.ScoreDict(scoredict)
+        self.filterdict = utils.ScoreDict(filterdict)
+        self.scoredict = utils.ScoreDict(scoredict)
         self.threshold = threshold
         relevance = self.filterdict.scores().union(self.scoredict.scores())
         return set(attributes), set(relevance)
 
-
     def _search(self, query, on_index=None, return_filtered=True):
         """
-
+        Search engine that returns the records best matching the query
         Args:
-            query (xarray.DepCol):
-            on_index (pd.Index):
-            return_filtered (bool):
+            query (xarray.DepCol): attributes of the query
+            on_index (pd.Index): optional, default None, if needed to compare the query to a specific set of records
+            return_filtered (bool): default True, returns the records best matching the query and their relevance score.
+                If set to False, returns all the records specified in on_index with their relevance score
 
         Returns:
             pd.DataFrame
@@ -107,32 +112,37 @@ class PandasDF(_Connector):
         q = query.toPandas()
         results1 = self.all_any(query=q, on_index=on_index, return_filtered=return_filtered)
         results2 = self.compare(query=q, on_index=results1.index, return_filtered=return_filtered)
-        table = pd.concat([results1.loc[results2.index],results2], axis=1)
+        uniquecols = list(filter(lambda x: x not in results1.columns, results2.columns))
+        results2 = results2[uniquecols]
+        table = pd.concat([results1.loc[results2.index], results2], axis=1)
         return table
+
     def _fetch(self, on_index, on_cols=None):
         """
-
+        This function returns the records corresponding to the index
         Args:
-            on_index (pd.Index):
-            on_cols (list): None
+            on_index (pd.Index): index of the target records to be returned
+            on_cols (list): optional, name of the columns to be returned. If None, all columns will be returned
 
         Returns:
             pd.DataFrame
         """
-        res =  self.target.loc[on_index, on_cols]
+        if on_cols is None:
+            on_cols = list(self.target.columns)
+        res = self.target.loc[on_index, on_cols]
         return res
 
-    def all_any(self, query, on_index=None, return_filtered = True):
+    def all_any(self, query, on_index=None, return_filtered=True):
         """
         returns a pre-filtered table score calculated on the column names provided in the filterdict.
         in the values for 'any': an exact match on any of these columns ensure the row is kept for further analysis
         in the values for 'all': an exact match on all of these columns ensure the row is kept for further analysis
         if the row does not have any exact match for the 'any' columns, or if it has one bad match for the 'all' columns,
         it is filtered out
-        MODIF: if return_filtered, this will not filter the table at all but just returns the scores
+        MODIF: if return_filtered is False, this will not filter the table at all but just returns the scores
         Args:
-            query (pd.Series): query
-            on_index (pd.Index): index
+            query (pd.Series): query with its attributes
+            on_index (pd.Index): optional, index of the target records compared. If None, all records will be targeted
 
         Returns:
             pd.DataFrame: a DataFrame with the exact score of the columns provided in the filterdict
@@ -147,7 +157,8 @@ class PandasDF(_Connector):
 
         table = pd.DataFrame(index=on_index)
 
-        # if no filter dict is given returns an empty table with all of the rows selected: no filterdict has been applied!
+        # if no filter dict is given returns an empty table with all of the rows selected:\
+        #  no filterdict has been applied!
         if self.filterdict is None:
             return table
 
@@ -165,7 +176,7 @@ class PandasDF(_Connector):
             match_any_df = pd.DataFrame(index=on_index)
             for c in match_any_cols:
                 match_any_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: functions.exactmatch(r, query[c]))
+                    lambda r: utils.exactmatch(r, query[c]))
             y = (match_any_df == 1)
             assert isinstance(y, pd.DataFrame)
 
@@ -179,7 +190,7 @@ class PandasDF(_Connector):
             match_all_df = pd.DataFrame(index=on_index)
             for c in match_all_cols:
                 match_all_df[c + '_exactscore'] = df[c].apply(
-                    lambda r: functions.exactmatch(r, query[c]))
+                    lambda r: utils.exactmatch(r, query[c]))
             y = (match_all_df == 1)
             assert isinstance(y, pd.DataFrame)
             allcriteriasmatch = y.all(axis=1)
@@ -188,9 +199,8 @@ class PandasDF(_Connector):
         else:
             allcriteriasmatch = pd.Series(index=on_index).fillna(False)
 
-
         if return_filtered is True:
-        # perform the all criterias match OR at least one criteria match logic
+            # perform the all criterias match OR at least one criteria match logic
             results = (allcriteriasmatch | anycriteriasmatch)
             table = table.loc[results]
 
@@ -199,23 +209,83 @@ class PandasDF(_Connector):
         assert isinstance(table, pd.DataFrame)
 
         table = pd.concat([self.target.loc[out_index, self.attributes],
-                           table], axis =1)
+                           table], axis=1)
         return table
 
     def compare(self, query, on_index, return_filtered=True):
         """
-
+        Compare a query against the dataframe and returns a similarity matrix
         Args:
-            query (pd.Series):
-            on_index (pd.Index):
-            return_filtered (bool):
+            query (pd.Series): the record and its attributes
+            on_index (pd.Index): the index of the records that are compared in the target records
+            return_filtered (bool): default True, returns only the records qhere the similarity vector\
+                is above a cetain threshold (any (row)> self.threshold)
 
         Returns:
-            pd.DataFrame
+            pd.DataFrame : a similarity matrix
         """
-        targets =self.target.loc[on_index]
-        table = functions.build_similarity_table(query=query,targets=targets,scoredict=self.scoredict)
+        targets = self.target.loc[on_index]
+        table = utils.build_similarity_table(query=query, targets=targets, scoredict=self.scoredict)
         if return_filtered:
             results = table.apply(lambda r: any(r > self.threshold), axis=1)
             table = table.loc[results]
         return table
+
+
+class SparkDF(_Connector):
+    def _config_init(self, attributes, filterdict, scoredict, threshold = 0.3):
+        self.filterdict = utils.ScoreDict(filterdict)
+        self.scoredict = utils.ScoreDict(scoredict)
+        self.threshold = threshold
+        relevance = self.filterdict.scores().union(self.scoredict.scores())
+        self.indexcol = 'index'
+        return set(attributes), set(relevance)
+
+    def _search(self, query, on_index=False, return_filtered=True):
+        """
+        Search engine that returns the records best matching the query
+        Args:
+            query (xarray.DepCol): attributes of the query
+            on_index (SparkCol): optional, default None, if needed to compare the query to a specific set of records
+            return_filtered (bool): default True, returns the records best matching the query and their relevance score.
+                If set to False, returns all the records specified in on_index with their relevance score
+
+        Returns:
+            SparkDataFrame
+        """
+        q = query.toSpark()
+        results1 = self.all_any(query=q, on_index=on_index, return_filtered=return_filtered)
+        ix_1 = results1.select(self.indexcol)
+        results2 = self.compare(query=q, on_index=ix_1, return_filtered=return_filtered)
+        uniquecols = list(filter(lambda x: x not in results1.schema.names, results2.schema.names))
+        results2 = results2.select(uniquecols)
+        table = results1.join(results2, on=[self.indexcol], how = 'left_outer')
+        return table
+
+    def _fetch(self, on_index, on_cols=None):
+        pass
+
+    def compare(self, query, on_index=None, return_filtered=True):
+
+        df = self.target
+        for c in self.scoredict.get('fuzzy'):
+            q_val = query.loc[c]
+            df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
+            df = df.withColumn('len', F.min(F.length(c), F.lit(len(q_val)).cast(T.IntegerType())))
+            df = df.withColumn('levenshtein', F.levenshtein(c, 'query'))
+            df = df.withColumn('score', F.col('levenshtein')/F.col('len'))
+
+
+                c + '_fuzzyscore',
+                F.levenshtein(
+                    c,
+                    F.lit(
+                        query.loc[c]
+                    )
+                )/min(F.length(c))
+            )
+        pass
+
+    def all_any(self, query, on_index=None, return_filtered=True):
+
+        pass

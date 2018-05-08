@@ -3,7 +3,7 @@ from . import classifiers
 from . import comparators
 from . import xarray
 import pandas as pd
-from . import functions
+from . import utils
 
 
 class RecordLinker:
@@ -163,7 +163,7 @@ def create_pandas_linker(target, filterdict, scoredict, X_train, y_train, *args,
     connector = connectors.PandasDF(target=target, attributes=target.columns, scoredict=scoredict,
                                     filterdict=filterdict)
     needed_scores = set(X_train.columns).difference(connector.relevance)
-    score_dict2 = functions.ScoreDict.from_cols(scorecols=needed_scores).to_dict()
+    score_dict2 = utils.ScoreDict.from_cols(scorecols=needed_scores).to_dict()
     comparator = comparators.PandasComparator(scoredict=score_dict2)
     n_estimators = kwargs.get('n_estimators')
     classifier = classifiers.ScikitLearnClassifier.from_table(X_train=X_train,y_train=y_train, n_estimators=n_estimators)

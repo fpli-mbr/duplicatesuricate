@@ -1,6 +1,6 @@
 import pandas as pd
 from . import xarray
-from . import functions
+from . import utils
 
 # noinspection PySetFunctionToLiteral,PySetFunctionToLiteral
 class _Comparator:
@@ -44,7 +44,7 @@ class PandasComparator(_Comparator):
         Returns:
 
         """
-        self.scoredict = functions.ScoreDict(scoredict)
+        self.scoredict = utils.ScoreDict(scoredict)
         compared = self.scoredict.compared()
         scores = self.scoredict.scores()
         return compared, scores
@@ -61,5 +61,5 @@ class PandasComparator(_Comparator):
         """
         df = targets.toPandas()
         q = query.toPandas()
-        table = functions.build_similarity_table(query=q,targets=df,scoredict=self.scoredict)
+        table = utils.build_similarity_table(query=q, targets=df, scoredict=self.scoredict)
         return table
