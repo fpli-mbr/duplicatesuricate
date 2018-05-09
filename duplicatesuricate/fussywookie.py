@@ -26,8 +26,6 @@ pattern="[-.;,| /]+"
 transform_left_token = ML.feature.RegexTokenizer(inputCol=left, outputCol=tk_left, pattern=pattern)
 transform_right_token = ML.feature.RegexTokenizer(inputCol=right, outputCol=tk_right, pattern=pattern)
 
-transformer_set = ML.Transformer()
-transformer_set.transform = transform_set
 
 def transform_set(df):
     differencer = F.udf(lambda x,y: list(set(x)-set(y)), T.ArrayType(T.StringType()))
@@ -37,6 +35,10 @@ def transform_set(df):
         withColumn(diff_lr, differencer(tk_left, tk_right)).\
         withColumn(diff_rl, differencer(tk_right, tk_left))
     return df1
+
+transformer_set = ML.Transformer()
+transformer_set.transform = transform_set
+
 
 def transform_sort(df, inputCol, outputCol):
     df1 = df.withColumn(
@@ -117,4 +119,8 @@ pipeline = ML.Pipeline(stages=[
 
 def token_score_spark(df, left, right, outputCol='token_score'):
     df_end = pipeline.fit(df).transform(df)
+    return df_end
+
+def exact_score_spark(df, left, right, outputCol='exact_score'):
+    df_end = df.withColumn(outputCol, (F.col(left) == F.col(right)).cast(T.IntegerType))
     return df_end

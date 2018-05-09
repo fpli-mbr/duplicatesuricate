@@ -1,7 +1,8 @@
 import pandas as pd
 from . import xarray
 from . import utils
-
+from . import fussywookie
+from pyspark.sql import functions as F
 
 class _Connector:
     def __init__(self, target=None, **kwargs):
@@ -263,28 +264,30 @@ class SparkDF(_Connector):
         return table
 
     def _fetch(self, on_index, on_cols=None):
-        pass
+        """
+
+        Args:
+            on_index (pyspark.sql.DataFrame):
+            on_cols (list):
+
+        Returns:
+            pyspark.sql.DataFrame
+        """
+        df = self.df.filter(self.df[self.indexcol] == on_index)
+        if on_cols is not None:
+            df = df.select(on_cols)
+        return df
 
     def compare(self, query, on_index=None, return_filtered=True):
-
-        df = self.target
-        for c in self.scoredict.get('fuzzy'):
-            q_val = query.loc[c]
-            df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
-            df = df.withColumn('len', F.min(F.length(c), F.lit(len(q_val)).cast(T.IntegerType())))
-            df = df.withColumn('levenshtein', F.levenshtein(c, 'query'))
-            df = df.withColumn('score', F.col('levenshtein')/F.col('len'))
-
-
-                c + '_fuzzyscore',
-                F.levenshtein(
-                    c,
-                    F.lit(
-                        query.loc[c]
-                    )
-                )/min(F.length(c))
-            )
-        pass
+        if on_index is not None:
+            targets = self.df.filter(self.df.index == on_index)
+        else:
+            targets = self.df
+        scoredict = self.scoredict
+        df = utils.build_spark_similarity_table(query=query,
+                                                targets=targets,
+                                                scoredict=scoredict)
+        return df
 
     def all_any(self, query, on_index=None, return_filtered=True):
 

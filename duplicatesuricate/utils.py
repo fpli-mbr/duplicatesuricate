@@ -3,7 +3,7 @@ import pandas as pd
 from fuzzywuzzy.fuzz import ratio, token_set_ratio
 from pyspark.sql.functions import udf
 from pyspark.sql.types import FloatType, StructField, StructType, StringType, BooleanType, IntegerType
-
+from . import fussywookie
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
@@ -352,3 +352,54 @@ def _transform_pandas_spark(sqlContext, df, drop_index=False):
     # create dataframe
     ds = sqlContext.createDataFrame(x, schema=schema)
     return ds
+
+def build_spark_similarity_table(query, targets, scoredict=None):
+    """
+   Return the similarity features between the query and the rows in the required index, with the selected comparison functions.
+   They can be fuzzy, token-based, exact
+   The attribute request creates two column: one with the value for the query and one with the value for the row
+
+   Args:
+       query (pd.Series): attributes of the query
+       targets (pyspark.sql.DataFrame):
+       scoredict (dict):
+
+   Returns:
+       pyspark.sql.DataFrame
+
+   Examples:
+       scoredict={'attributes':['name_len'],
+                   'fuzzy':['name','street']
+                   'token':'name',
+                   'exact':'id'
+                   'acronym':'name'}
+       returns a comparison table with the following column names (and the associated scores):
+           ['name_len_query','name_len_row','name_fuzzyscore','street_fuzzyscore',
+           'name_tokenscore','id_exactscore','name_acronymscore']
+           """
+    if scoredict is None:
+        return None
+    spark_fuzzy = fussywookie.fuzzy_score_spark
+    spark_token = fussywookie.token_score_spark
+    spark_exact = fussywookie.exact_score_spark
+    df = targets
+    for c in scoredict.get('fuzzy'):
+        q_val = query.loc[c]
+        df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
+        score_col = c + '_fuzzyscore'
+        df = spark_fuzzy(df, left=c, right='query', outputCol=score_col)
+        df = df.drop(c)
+    for c in scoredict.get('token'):
+        q_val = query.loc[c]
+        df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
+        score_col = c + '_tokenscore'
+        df = spark_token(df, left=c, right='query', outputCol=score_col)
+        df = df.drop(c)
+    for c in scoredict.get('exact'):
+        q_val = query.loc[c]
+        df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
+        score_col = c + '_exactscore'
+        df = spark_exact(df, left=c, right='query', outputCol=score_col)
+        df = df.drop(c)
+    return df
+
