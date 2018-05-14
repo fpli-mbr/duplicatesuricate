@@ -7,6 +7,7 @@ from . import fussywookie
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
+
 class ScoreDict(dict):
     def _unpack(self):
         outputcols = []
@@ -28,20 +29,23 @@ class ScoreDict(dict):
                     inputcols.append(c)
                     outputcols.append(c + _scorename[k])
         return inputcols, outputcols
+
     def compared(self):
         compared_cols = set(self._unpack()[0])
         return compared_cols
+
     def scores(self):
         score_cols = set(self._unpack()[1])
         return score_cols
+
     def to_dict(self):
-        m=dict()
+        m = dict()
         for k in self.keys():
             m[k] = self[k]
         return m
 
     @classmethod
-    def from_cols(cls,scorecols):
+    def from_cols(cls, scorecols):
         """
         Args:
             scorecols (set): list of scoring cols
@@ -114,7 +118,6 @@ def fuzzyscore(a, b):
 
 
 _fuzzy_udf = udf(lambda a, b: fuzzyscore(a, b), FloatType())
-
 
 
 def tokenscore(a, b):
@@ -218,47 +221,49 @@ def _rmv_end_str(w, s):
         w = w[:-len(s)]
     return w
 
-def build_similarity_table(query, targets,  scoredict=None):
-        """
-        Return the similarity features between the query and the rows in the required index, with the selected comparison functions.
-        They can be fuzzy, token-based, exact, or acronym.
-        The attribute request creates two column: one with the value for the query and one with the value for the row
 
-        Args:
-            query (pd.Series): attributes of the query
-            targets (pd.DataFrame):
-            scoredict (dict):
+def build_similarity_table(query, targets, scoredict=None):
+    """
+    Return the similarity features between the query and the rows in the required index, with the selected comparison functions.
+    They can be fuzzy, token-based, exact, or acronym.
+    The attribute request creates two column: one with the value for the query and one with the value for the row
 
-        Returns:
-            pd.DataFrame:
+    Args:
+        query (pd.Series): attributes of the query
+        targets (pd.DataFrame):
+        scoredict (dict):
 
-        Examples:
-            scoredict={'attributes':['name_len'],
-                        'fuzzy':['name','street']
-                        'token':'name',
-                        'exact':'id'
-                        'acronym':'name'}
-            returns a comparison table with the following column names (and the associated scores):
-                ['name_len_query','name_len_row','name_fuzzyscore','street_fuzzyscore',
-                'name_tokenscore','id_exactscore','name_acronymscore']
-        """
-        if scoredict is None:
-            return None
-        on_index = targets.index
-        table_score = pd.DataFrame(index=on_index)
+    Returns:
+        pd.DataFrame:
 
-        attributes_cols = scoredict.get('attributes')
-        if attributes_cols is not None:
-            for c in attributes_cols:
-                table_score[c + '_source'] = query[c]
-                table_score[c + '_target'] = targets[c]
+    Examples:
+        scoredict={'attributes':['name_len'],
+                    'fuzzy':['name','street']
+                    'token':'name',
+                    'exact':'id'
+                    'acronym':'name'}
+        returns a comparison table with the following column names (and the associated scores):
+            ['name_len_query','name_len_row','name_fuzzyscore','street_fuzzyscore',
+            'name_tokenscore','id_exactscore','name_acronymscore']
+    """
+    if scoredict is None:
+        return None
+    on_index = targets.index
+    table_score = pd.DataFrame(index=on_index)
 
-        for c in _scoringkeys:
-            table = _compare(query, targets, on_cols=scoredict.get(c), func=_scorefuncs[c],
-                                  suffix=_scorename[c])
-            table_score = pd.concat([table_score, table], axis=1)
+    attributes_cols = scoredict.get('attributes')
+    if attributes_cols is not None:
+        for c in attributes_cols:
+            table_score[c + '_source'] = query[c]
+            table_score[c + '_target'] = targets[c]
 
-        return table_score
+    for c in _scoringkeys:
+        table = _compare(query, targets, on_cols=scoredict.get(c), func=_scorefuncs[c],
+                         suffix=_scorename[c])
+        table_score = pd.concat([table_score, table], axis=1)
+
+    return table_score
+
 
 def _compare(query, targets, on_cols, func, suffix):
     """
@@ -353,6 +358,21 @@ def _transform_pandas_spark(sqlContext, df, drop_index=False):
     ds = sqlContext.createDataFrame(x, schema=schema)
     return ds
 
+def copy_value(df, query, col, outputCol='query'):
+    assert isinstance(col, str)
+    assert isinstance(query, pd.Series)
+    assert isinstance(outputCol, str)
+
+    if outputCol is None:
+        out_col = 'query'
+    else:
+        out_col = outputCol
+    print('col', col)
+    q_val = query.loc[col]
+    df_end = df.withColumn(out_col, F.lit(q_val).cast(F.StringType()))
+    return df_end
+
+
 def build_spark_similarity_table(query, targets, scoredict=None):
     """
    Return the similarity features between the query and the rows in the required index, with the selected comparison functions.
@@ -377,29 +397,38 @@ def build_spark_similarity_table(query, targets, scoredict=None):
            ['name_len_query','name_len_row','name_fuzzyscore','street_fuzzyscore',
            'name_tokenscore','id_exactscore','name_acronymscore']
            """
+
+
+
     if scoredict is None:
         return None
     spark_fuzzy = fussywookie.fuzzy_score_spark
     spark_token = fussywookie.token_score_spark
     spark_exact = fussywookie.exact_score_spark
     df = targets
-    for c in scoredict.get('fuzzy'):
-        q_val = query.loc[c]
-        df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
-        score_col = c + '_fuzzyscore'
-        df = spark_fuzzy(df, left=c, right='query', outputCol=score_col)
-        df = df.drop(c)
-    for c in scoredict.get('token'):
-        q_val = query.loc[c]
-        df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
-        score_col = c + '_tokenscore'
-        df = spark_token(df, left=c, right='query', outputCol=score_col)
-        df = df.drop(c)
-    for c in scoredict.get('exact'):
-        q_val = query.loc[c]
-        df = df.withColumn('query', F.lit(q_val).cast(F.StringType()))
-        score_col = c + '_exactscore'
-        df = spark_exact(df, left=c, right='query', outputCol=score_col)
-        df = df.drop(c)
+    # fuzzy matching
+    loopcols = scoredict.get('fuzzy')
+    if loopcols is not None:
+        for c in loopcols:
+            print(c)
+            df = copy_value(df, query=query, col=c, outputCol='query')
+            score_col = c + '_fuzzyscore'
+            df = spark_fuzzy(df, left=c, right='query', outputCol=score_col)
+            df = df.drop(c)
+    # token matching
+    loopcols = scoredict.get('token')
+    if loopcols is not None:
+        for c in loopcols:
+            df = copy_value(df, query=query, col=c, outputCol='query')
+            score_col = c + '_tokenscore'
+            df = spark_token(df, left=c, right='query', outputCol=score_col)
+            df = df.drop(c)
+    # exact matching
+    loopcols = scoredict.get('exact')
+    if loopcols is not None:
+        for c in loopcols:
+            df = copy_value(df, query=query, col=c, outputCol='query')
+            score_col = c + '_exactscore'
+            df = spark_exact(df, left=c, right='query', outputCol=score_col)
+            df = df.drop(c)
     return df
-
